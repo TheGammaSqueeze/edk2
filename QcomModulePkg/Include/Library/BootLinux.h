@@ -164,6 +164,7 @@ typedef enum {
         IMG_RECOVERY,
         IMG_VENDOR_BOOT,
         IMG_INIT_BOOT,
+        IMG_PVMFW,
         IMG_MAX
 } img_type;
 
@@ -191,6 +192,7 @@ typedef struct BootInfo {
   VOID *VBData;
   UINT32 HeaderVersion;
   BOOLEAN HasBootInitRamdisk;
+  BOOLEAN HasPvmFw;
 } BootInfo;
 
 typedef struct BootLinuxParamlist {
@@ -215,6 +217,7 @@ typedef struct BootLinuxParamlist {
   UINT64 KernelEndAddr;
   UINT64 RamdiskLoadAddr;
   UINT64 DeviceTreeLoadAddr;
+  UINT64 PvmFwLoadAddr;
   UINT64 *HypDtboBaseAddr;
   UINT32 NumHypDtbos;
 
@@ -240,6 +243,7 @@ typedef struct BootLinuxParamlist {
   //Kernel size rounded off based on the page size
   UINT32 KernelSizeActual;
   UINT32 FinalBootConfigLen;
+  UINT32 PvmFwSize;
 
   CHAR8 *FinalCmdLine;
   CHAR8 *FinalBootConfig;
@@ -251,6 +255,7 @@ typedef struct BootLinuxParamlist {
    * with init_boot partition
    */
   VOID *RamdiskBuffer;
+  VOID *PvmFwBuffer;
 } BootParamlist;
 
 extern RamPartitionEntry UpdatedRamPartitions[NUM_NOMAP_REGIONS];

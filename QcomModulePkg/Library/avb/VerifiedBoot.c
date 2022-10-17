@@ -91,7 +91,8 @@ static CHAR8 *avb_verify_partition_name[] = {
      "vbmeta",
      "recovery",
      "vendor_boot",
-     "init_boot"
+     "init_boot",
+     "pvmfw"
 };
 
 STATIC struct verified_boot_verity_mode VbVm[] = {
@@ -1571,6 +1572,11 @@ LoadImageAndAuthVB2 (BootInfo *Info, BOOLEAN HibernationResume,
       NumRequestedPartition += 1;
     }
 
+    if (Info->HasPvmFw) {
+      AddRequestedPartition (RequestedPartitionAll, IMG_PVMFW);
+      NumRequestedPartition += 1;
+    }
+
     Result = avb_slot_verify (Ops, (CONST CHAR8 *CONST *)RequestedPartition,
                 SlotSuffix, VerifyFlags, VerityFlags, &SlotData);
   }
@@ -2030,6 +2036,8 @@ LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume,
   UINT32 RecoveryHdrSz = 0;
   VOID *InitBootHdr = NULL;
   UINT32 InitBootHdrSz = 0;
+  VOID *PvmFwHdr = NULL;
+  UINT32 PvmFwHdrSz = 0;
 
   WaitForFlashFinished ();
 
@@ -2083,6 +2091,25 @@ LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume,
   if (RecoveryHdr) {
     FreePages (RecoveryHdr,
                ALIGN_PAGES (BOOT_IMG_MAX_PAGE_SIZE, ALIGNMENT_MASK_4KB));
+  }
+
+  Info->HasPvmFw = false;
+
+  /* Check for pvmfw partition */
+  Status = LoadPartitionImageHeader (Info, (CHAR16 *)L"pvmfw",
+           &PvmFwHdr, &PvmFwHdrSz);
+  if (Status == EFI_SUCCESS) {
+    DEBUG ((EFI_D_VERBOSE, "Found pvmfw partition\n"));
+    if (PvmFwHdrSz &&
+        ((boot_img_hdr *)(PvmFwHdr))->kernel_size != 0) {
+      Info->HasPvmFw = true;
+      DEBUG ((EFI_D_VERBOSE, "Valid pvmfw found\n"));
+    } else {
+      DEBUG ((EFI_D_ERROR,
+             "ERROR: pvmfw partition does not contain a valid image!\n"));
+    }
+  } else {
+    DEBUG ((EFI_D_VERBOSE, "No pvmfw partition found.\n"));
   }
 
 get_ptn_name:
