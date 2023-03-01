@@ -48,6 +48,7 @@
 
 [BuildOptions.AARCH64]
   GCC:*_*_*_CC_FLAGS = $(SDLLVM_COMPILE_ANALYZE) $(SDLLVM_ANALYZE_REPORT)
+  GCC:*_*_*_CC_FLAGS = $(PVMFW_BCC_ENABLED)
 
 [Sources]
    libavb/avb_chain_partition_descriptor.c

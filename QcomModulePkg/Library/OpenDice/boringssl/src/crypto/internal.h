@@ -242,6 +242,7 @@ OPENSSL_INLINE void OPENSSL_reset_malloc_counter_for_testing(void) {}
 // Pointer utility functions.
 
 // buffers_alias returns one if |a| and |b| alias and zero otherwise.
+#if !defined (PVMFW_BCC)
 static inline int buffers_alias(const uint8_t *a, size_t a_len,
                                 const uint8_t *b, size_t b_len) {
   // Cast |a| and |b| to integers. In C, pointer comparisons between unrelated
@@ -269,7 +270,7 @@ static inline void *align_pointer(void *ptr, size_t alignment) {
   assert(((uintptr_t)ptr & (alignment - 1)) == 0);
   return ptr;
 }
-
+#endif
 
 // Constant-time utility functions.
 //

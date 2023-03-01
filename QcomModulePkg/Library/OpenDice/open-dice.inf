@@ -32,6 +32,7 @@
 	boringssl/src/crypto/curve25519/curve25519.c
 	boringssl/linux-aarch64/crypto/fipsmodule/sha512-armv8-linux.S
 	boringssl/src/crypto/thread_none.c
+	QcBcc.c
 	opendice-util.c
 
 [Packages]

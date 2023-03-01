@@ -118,6 +118,7 @@
 #define DECOMPRESS_SIZE_FACTOR 8
 #define ALIGNMENT_MASK_4KB 4096
 #define MAX_NUMBER_OF_LOADED_IMAGES 32
+#define PVMFW_CONFIG_MAX_BLOBS 2
 /* Size of the header that is used in case the boot image has
  * a uncompressed kernel + appended dtb */
 #define PATCHED_KERNEL_HEADER_SIZE 20
@@ -193,6 +194,7 @@ typedef struct BootInfo {
   UINT32 HeaderVersion;
   BOOLEAN HasBootInitRamdisk;
   BOOLEAN HasPvmFw;
+  UINT32 PvmFwRawSize;
 } BootInfo;
 
 typedef struct BootLinuxParamlist {
@@ -257,6 +259,19 @@ typedef struct BootLinuxParamlist {
   VOID *RamdiskBuffer;
   VOID *PvmFwBuffer;
 } BootParamlist;
+
+typedef struct {
+  uint32_t Offset;
+  uint32_t Size;
+} PvmFwConfigEntry;
+
+typedef struct {
+  uint32_t Magic;
+  uint32_t Version;
+  uint32_t TotalSize;
+  uint32_t Flags;
+  PvmFwConfigEntry Entries[PVMFW_CONFIG_MAX_BLOBS];
+} PvmFwConfigHeader;
 
 extern RamPartitionEntry UpdatedRamPartitions[NUM_NOMAP_REGIONS];
 extern UINT32 NumUpdPartitions;

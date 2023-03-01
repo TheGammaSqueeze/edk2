@@ -84,6 +84,7 @@
 #include "UpdateDeviceTree.h"
 #include "libfdt.h"
 #include "Bootconfig.h"
+#include "QcBcc.h"
 #include <ufdt_overlay.h>
 
 #ifndef DISABLE_KERNEL_PROTOCOL
@@ -201,6 +202,7 @@ QueryEarlyServiceBootParams (UINT64 *KernelLoadAddr, UINT64 *KernelSizeReserved)
 }
 #endif
 
+#ifdef PVMFW_BCC
 STATIC BOOLEAN
 QueryPvmFwParams (UINT64 *PvmFwLoadAddr, UINT64 *PvmFwSizeReserved)
 {
@@ -219,14 +221,17 @@ QueryPvmFwParams (UINT64 *PvmFwLoadAddr, UINT64 *PvmFwSizeReserved)
   return (Status == EFI_SUCCESS &&
           SizeStatus == EFI_SUCCESS);
 }
+#endif
 
 STATIC EFI_STATUS
 UpdateBootParams (BootParamlist *BootParamlistPtr)
 {
   UINT64 KernelSizeReserved;
   UINT64 KernelLoadAddr;
+#ifdef PVMFW_BCC
   UINT64 PvmFwSizeReserved;
   UINT64 PvmFwLoadAddr;
+#endif
   Kernel64Hdr *Kptr = NULL;
   UINT64 KernelLoadAddr_new = 0;
   UINT64 KernelSizeReserved_new = 0;
@@ -329,6 +334,7 @@ UpdateBootParams (BootParamlist *BootParamlistPtr)
     return EFI_BUFFER_TOO_SMALL;
   }
 
+#ifdef PVMFW_BCC
   if (QueryPvmFwParams (&PvmFwLoadAddr, &PvmFwSizeReserved)) {
     BootParamlistPtr->PvmFwLoadAddr = PvmFwLoadAddr;
     if (BootParamlistPtr->PvmFwSize > PvmFwSizeReserved) {
@@ -336,6 +342,7 @@ UpdateBootParams (BootParamlist *BootParamlistPtr)
       return EFI_BUFFER_TOO_SMALL;
     }
   }
+#endif
 
   return EFI_SUCCESS;
 }
@@ -926,6 +933,7 @@ GZipPkgCheck (BootParamlist *BootParamlistPtr)
   return EFI_SUCCESS;
 }
 
+#ifdef PVMFW_BCC
 STATIC EFI_STATUS
 RmRegisterPvmFwRegion (BootInfo *Info, BootParamlist *BootParamlistPtr)
 {
@@ -1004,6 +1012,81 @@ RmRegisterPvmFwRegion (BootInfo *Info, BootParamlist *BootParamlistPtr)
   return EFI_SUCCESS;
 }
 
+STATIC VOID
+CreatePvmFwConfig (PvmFwConfigHeader *Hdr, size_t BccSize) {
+  PvmFwConfigHeader Header;
+
+  //ASCII of characters in "pvmf"
+  Header.Magic = 0x666D7670;
+  //version 1,0
+  Header.Version = ((UINT32) 1 << 16) | (UINT32) 0;
+  //BCC Handover blob: 8 byte alligned
+  Header.Entries[0].Offset = 0x20;
+  Header.Entries[0].Size = BccSize;
+  //DP (Debug Ploicy) blob (Optional): 8 byte alligned
+  Header.Entries[1].Offset = 0;
+  Header.Entries[1].Size = 0;
+  Header.TotalSize = sizeof (Header) + Header.Entries[0].Size;
+  memcpy (Hdr, &Header, sizeof (Header));
+}
+
+STATIC EFI_STATUS
+AppendPvmFwConfig (BootInfo *Info, BootParamlist *BootParamlistPtr) {
+  UINT8 *FinalEncodedBccArtifacts = NULL;
+  UINT8 *PvmFwCfgLoadAddr = NULL;
+  PvmFwConfigHeader PvmFwCgfHdr = {0};
+  size_t  BccArtifactsValidSize = 0;
+  UINT8 Ret;
+
+  //TODO: Ensure there is enough room to append config data.
+
+  /* Allocate BCC artifacts buffer */
+  FinalEncodedBccArtifacts = AllocateZeroPool (BCC_ARTIFACTS_MAX_SIZE);
+  if (!FinalEncodedBccArtifacts) {
+    DEBUG ((EFI_D_ERROR,
+            ": Failed to allocate memory for BCC artifacts\n"));
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  /* Generate BCC handover data*/
+  Ret = GetBccArtifacts (FinalEncodedBccArtifacts,
+                       BCC_ARTIFACTS_MAX_SIZE,
+                       &BccArtifactsValidSize);
+  if (Ret != 0) {
+    DEBUG ((EFI_D_ERROR, "BCC handover data generation failed\n"));
+    return EFI_FAILURE;
+  }
+
+  CreatePvmFwConfig (&PvmFwCgfHdr, BccArtifactsValidSize);
+  PvmFwCfgLoadAddr = (UINT8*)((((BootParamlistPtr->PvmFwLoadAddr +
+                     Info->PvmFwRawSize) / 4096) * 4096) + 4096);
+
+  DEBUG ((EFI_D_VERBOSE, "PvmFwCfgLoadAddr: 0x%lx\n",
+                          PvmFwCfgLoadAddr));
+  DEBUG ((EFI_D_VERBOSE, "PvmFwCgfHdr.Entries[0].Offset: 0x%lx\n",
+                          PvmFwCgfHdr.Entries[0].Offset));
+  DEBUG ((EFI_D_VERBOSE, "PvmFwCgfHdr.Entries[0].Size: 0x%lx\n",
+                          PvmFwCgfHdr.Entries[0].Size));
+  DEBUG ((EFI_D_VERBOSE, "BccArtifactsValidSize: 0x%lx\n",
+                          BccArtifactsValidSize));
+
+  /* Write PvmFwCgfHdr to the page alligned end of
+   * pvmfw raw binary in golden region. */
+  gBS->CopyMem ((CHAR8 *)PvmFwCfgLoadAddr,
+                         &PvmFwCgfHdr,
+                         sizeof (PvmFwCgfHdr));
+  /* Write BCC blob to end of pVM firmware config header */
+  gBS->CopyMem ((CHAR8 *)(PvmFwCfgLoadAddr +
+                         PvmFwCgfHdr.Entries[0].Offset),
+                         FinalEncodedBccArtifacts,
+                         BccArtifactsValidSize);
+  /* No need to write DP blob as it is optional in Android-U. */
+  FreePool (FinalEncodedBccArtifacts);
+
+  return EFI_SUCCESS;
+}
+#endif
+
 STATIC EFI_STATUS
 LoadAddrAndDTUpdate (BootInfo *Info, BootParamlist *BootParamlistPtr)
 {
@@ -1013,7 +1096,9 @@ LoadAddrAndDTUpdate (BootInfo *Info, BootParamlist *BootParamlistPtr)
   UINT64 RamdiskLoadAddrCopy = 0;
   UINT32 TotalRamdiskSize;
   UINT64 End = 0;
+#ifdef PVMFW_BCC
   UINT64 PvmFwLoadAddr = 0;
+#endif
   UINT32 VRamdiskSizePageAligned =
     LOCAL_ROUND_TO_PAGE (BootParamlistPtr->VendorRamdiskSize,
     BootParamlistPtr->PageSize);
@@ -1086,6 +1171,8 @@ LoadAddrAndDTUpdate (BootInfo *Info, BootParamlist *BootParamlistPtr)
                 BootParamlistPtr->RamdiskSize);
 
   RamdiskLoadAddr +=BootParamlistPtr->RamdiskSize;
+
+#ifdef PVMFW_BCC
   PvmFwLoadAddr = BootParamlistPtr->PvmFwLoadAddr;
 
   /* Write pvmfw to golden region and register
@@ -1101,12 +1188,18 @@ LoadAddrAndDTUpdate (BootInfo *Info, BootParamlist *BootParamlistPtr)
                   BootParamlistPtr->PvmFwSize);
     DEBUG ((EFI_D_VERBOSE, "Copied pvmfw into golden region\n"));
 
-    Status = RmRegisterPvmFwRegion (Info, BootParamlistPtr);
-    if (Status != EFI_SUCCESS) {
-      DEBUG ((EFI_D_ERROR,
-             "Failed to register pvmfw region with RM: %r\n", Status));
+    Status = AppendPvmFwConfig (Info, BootParamlistPtr);
+    if (Status == EFI_SUCCESS) {
+      Status = RmRegisterPvmFwRegion (Info, BootParamlistPtr);
+      if (Status != EFI_SUCCESS) {
+        DEBUG ((EFI_D_ERROR,
+               "Failed to register pvmfw region with RM: %r\n", Status));
+      }
+    } else {
+      DEBUG ((EFI_D_ERROR, "Failed to write pvmfw config: %r\n", Status));
     }
   }
+#endif
 
   if (BootParamlistPtr->BootingWith32BitKernel) {
     if (CHECK_ADD64 (BootParamlistPtr->KernelLoadAddr,
@@ -1570,10 +1663,12 @@ BootLinux (BootInfo *Info)
   DEBUG ((EFI_D_VERBOSE, "Ramdisk Size Actual: 0x%x\n", RamdiskSizeActual));
   DEBUG ((EFI_D_VERBOSE, "Ramdisk Offset: 0x%x\n",
                                        BootParamlistPtr.RamdiskOffset));
+#ifdef PVMFW_BCC
   if (Info->HasPvmFw) {
         DEBUG ((EFI_D_VERBOSE, "PvmFw Load Address: 0x%x\n",
                         BootParamlistPtr.PvmFwLoadAddr));
   }
+#endif
   DEBUG (
       (EFI_D_VERBOSE, "Device Tree Load Address: 0x%x\n",
                              BootParamlistPtr.DeviceTreeLoadAddr));
