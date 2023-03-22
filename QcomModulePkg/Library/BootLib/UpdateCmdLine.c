@@ -33,7 +33,7 @@
 /*
   * Changes from Qualcomm Innovation Center are provided under the following
   * license:
-  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+  * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
   *
   * Redistribution and use in source and binary forms, with or without
   * modification, are permitted (subject to the limitations in the disclaimer
@@ -75,14 +75,16 @@
 #include <Protocol/EFIChipInfoTypes.h>
 #include <Protocol/EFIPmicPon.h>
 #include <Protocol/Print2.h>
+#include <Library/EarlyUsbInit.h>
 
 #include "AutoGen.h"
-#include <DeviceInfo.h>
+#include "DeviceInfo.h"
 #include "UpdateCmdLine.h"
 #include "Recovery.h"
 #include "LECmdLine.h"
 #include "EarlyEthernet.h"
 
+#define BOOT_CPU_PARAM_LEN 13
 #define SIZE_OF_DELIM 2
 #define PARAM_DELIM "\n"
 #define ADD_PARAM_LEN(BootConfigFlag, ParamLen, CmdLineL, BootConfigL) \
@@ -126,7 +128,11 @@ STATIC CHAR8 *SkipRamFs = " skip_initramfs";
 STATIC CHAR8 IPv4AddrBufCmdLine[MAX_IP_ADDR_BUF];
 STATIC CHAR8 IPv6AddrBufCmdLine[MAX_IP_ADDR_BUF];
 STATIC CHAR8 MacEthAddrBufCmdLine[MAX_IP_ADDR_BUF];
+STATIC CHAR8 PhyAddrBufCmdLineCmdLine[MAX_IP_ADDR_BUF];
+STATIC CHAR8 IFaceAddrBufCmdLine[MAX_IP_ADDR_BUF];
+STATIC CHAR8 SpeedAddrBufCmdLine[MAX_IP_ADDR_BUF];
 STATIC CHAR8 *ResumeCmdLine = NULL;
+STATIC CHAR8 BootCpuCmdLine[BOOT_CPU_PARAM_LEN];
 
 /* Display command line related structures */
 #define MAX_DISPLAY_CMD_LINE 256
@@ -137,13 +143,23 @@ STATIC UINTN DisplayCmdLineLen = sizeof (DisplayCmdLine);
 STATIC CHAR8 HwFenceCmdLine[MAX_HW_FENCE_CMD_LINE];
 STATIC UINTN HwFenceCmdLineLen = sizeof (HwFenceCmdLine);
 
+/* GPU command line related structures */
+#define MAX_GPU_CMD_LINE 256
+STATIC CHAR8 GpuCmdLine[MAX_GPU_CMD_LINE];
+STATIC UINTN GpuCmdLineLen = sizeof (GpuCmdLine);
+
+#define MAX_AUDIO_CMD_LENGTH 64
+STATIC CHAR8 AudioFrameWork[MAX_AUDIO_FW_LENGTH];
+STATIC UINT32 AudioFWLen;
+STATIC CHAR8 *AndroidBootAudioFW = " androidboot.audio=";
+
 #define MAX_DTBO_IDX_STR 64
 STATIC CHAR8 *AndroidBootDtboIdx = " androidboot.dtbo_idx=";
 STATIC CHAR8 *AndroidBootDtbIdx = " androidboot.dtb_idx=";
 
 STATIC CHAR8 *AndroidBootForceNormalBoot =
                                       " androidboot.force_normal_boot=";
-CHAR8 *BootForceNormalBoot = "0";
+CHAR8 BootForceNormalBoot = '0';
 STATIC CONST CHAR8 *AndroidBootFstabSuffix =
                                       " androidboot.fstab_suffix=";
 STATIC CHAR8 *FstabSuffixEmmc = "emmc";
@@ -382,6 +398,35 @@ STATIC VOID GetHwFenceCmdline (VOID)
   }
 }
 
+STATIC EFI_STATUS GetGpuCmdline (VOID)
+{
+  EFI_STATUS Status;
+
+  Status = gRT->GetVariable ((CHAR16 *)L"GpuConfiguration",
+                             &gQcomTokenSpaceGuid, NULL, &GpuCmdLineLen,
+                             GpuCmdLine);
+  if (Status != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "Unable to get GPU Preempt Config, %r\n", Status));
+  }
+
+  return Status;
+}
+
+
+STATIC VOID
+GetAudioFrameWork (CHAR8 *FrameWork, UINT32* Length)
+{
+  EFI_STATUS Status;
+  CHAR8 *Src;
+
+  Status = ReadAudioFrameWork (&Src, Length);
+  if (Status == EFI_SUCCESS) {
+     if (*Length) {
+        AsciiStrCatS (FrameWork, MAX_AUDIO_FW_LENGTH, Src);
+   }
+ }
+}
+
 /*
  * Returns length = 0 when there is failure.
  */
@@ -504,6 +549,87 @@ GetResumeCmdLine (CHAR8 **ResumeCmdLine, CHAR16 *ReqPartition)
      return 0;
   }
   return Len;
+}
+
+/*
+ * Returns length = 0 when there is failure.
+ */
+UINT32
+GetSystemPathByPname (CHAR8 **SysPath, BOOLEAN MultiSlotBoot,
+                      BOOLEAN BootIntoRecovery,
+                      CHAR16 *ReqPartition, CHAR8 *Key)
+{
+  INT32 Index;
+  UINT32 Lun;
+  CHAR16 PartitionName[MAX_GPT_NAME_SIZE];
+  Slot CurSlot = GetCurrentSlotSuffix ();
+  CHAR8 LunCharMapping[] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
+  CHAR8 RootDevStr[BOOT_DEV_NAME_SIZE_MAX];
+
+  *SysPath = AllocateZeroPool (sizeof (CHAR8) * MAX_PATH_SIZE);
+  if (!*SysPath) {
+    DEBUG ((EFI_D_ERROR,
+      "GetSystemPathByPname: Failed to allocated memory System path query\n"));
+    return 0;
+  }
+
+  if (ReqPartition == NULL ||
+      Key == NULL) {
+     DEBUG ((EFI_D_ERROR, "GetSystemPathByPname: Invalid parameters: NULL\n"));
+     FreePool (*SysPath);
+     *SysPath = NULL;
+     return 0;
+  }
+
+  if (IsLEVariant () &&
+       BootIntoRecovery) {
+     StrnCpyS (PartitionName, MAX_GPT_NAME_SIZE, (CONST CHAR16 *)L"recoveryfs",
+               StrLen ((CONST CHAR16 *)L"recoveryfs"));
+  } else {
+     StrnCpyS (PartitionName, MAX_GPT_NAME_SIZE, ReqPartition,
+               StrLen (ReqPartition));
+  }
+
+  /* Append slot info for A/B Variant */
+  if (MultiSlotBoot) {
+     StrnCatS (PartitionName, MAX_GPT_NAME_SIZE, CurSlot.Suffix,
+            StrLen (CurSlot.Suffix));
+  }
+
+  Index = GetPartitionIndex (PartitionName);
+  if (Index == INVALID_PTN ||
+      Index >= MAX_NUM_PARTITIONS) {
+    DEBUG ((EFI_D_ERROR,
+           "GetSystemPathByPname: System partition does not exist\n"));
+    FreePool (*SysPath);
+    *SysPath = NULL;
+    return 0;
+  }
+
+  Lun = GetPartitionLunFromIndex (Index);
+  GetRootDeviceType (RootDevStr, BOOT_DEV_NAME_SIZE_MAX);
+  if (!AsciiStrCmp ("Unknown", RootDevStr)) {
+    FreePool (*SysPath);
+    *SysPath = NULL;
+    return 0;
+  }
+
+  if (!AsciiStrCmp ("EMMC", RootDevStr)) {
+    AsciiSPrint (*SysPath, MAX_PATH_SIZE, " %a=/dev/mmcblk0p%d", Key, Index);
+  } else if (!AsciiStrCmp ("UFS", RootDevStr)) {
+    AsciiSPrint (*SysPath, MAX_PATH_SIZE, " %a=/dev/sd%c%d",
+                 Key,
+                 LunCharMapping[Lun],
+                 GetPartitionIdxInLun (PartitionName, Lun));
+  } else {
+    DEBUG ((EFI_D_ERROR, "GetSystemPathByPname: Unknown Device type\n"));
+    FreePool (*SysPath);
+    *SysPath = NULL;
+    return 0;
+  }
+  DEBUG ((EFI_D_ERROR, "GetSystemPathByPname: System Path - %a \n", *SysPath));
+
+  return AsciiStrLen (*SysPath);
 }
 
 STATIC
@@ -683,6 +809,9 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param, CHAR8 **FinalCmdLine,
   Src = Param->HwFenceCmdLine;
   AsciiStrCatS (Dst, MaxCmdLineLen, Src);
 
+  Src = Param->GpuCmdLine;
+  AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+
   if (Param->MdtpActive) {
     Src = Param->MdtpActiveFlag;
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
@@ -761,12 +890,12 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param, CHAR8 **FinalCmdLine,
       (!Param->MultiSlotBoot &&
        !IsBuildUseRecoveryAsBoot ())) {
     if (Param->HeaderVersion < BOOT_HEADER_VERSION_THREE) {
-      BootForceNormalBoot[0] = '1';
+      BootForceNormalBoot = '1';
     }
-    if (Param->HeaderVersion >= BOOT_HEADER_VERSION_THREE) {
+    if (Param->HeaderVersion <= BOOT_HEADER_VERSION_THREE) {
       Src = AndroidBootForceNormalBoot;
       AsciiStrCatS (Dst, MaxCmdLineLen, Src);
-      Src = BootForceNormalBoot;
+      Src = &BootForceNormalBoot;
       AsciiStrCatS (Dst, MaxCmdLineLen, Src);
     }
   }
@@ -799,6 +928,17 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param, CHAR8 **FinalCmdLine,
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
     Src = Param->EarlyEthMacCmdLine;
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+    Src = Param->EarlyPhyAddrCmdLine;
+    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+    Src = Param->EarlyIFaceCmdLine;
+    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+    Src = Param->EarlySpeedCmdLine;
+    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+  }
+
+  if (EarlyUsbInitEnabled ()) {
+    Src = Param->UsbCompCmdLine;
+    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
   }
 
   if (IsHibernationEnabled ()) {
@@ -809,6 +949,18 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param, CHAR8 **FinalCmdLine,
   if (Param->SilentBootModeCmdLine != NULL) {
     Src = Param->SilentBootModeCmdLine;
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+  }
+
+  if (BootCpuSelectionEnabled ()) {
+    Src = Param->BootCpuCmdLine;
+    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+  }
+
+  if (EarlyServicesEnabled ()) {
+    if (Param->ModemPathCmdLine) {
+        Src = Param->ModemPathCmdLine;
+        AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+    }
   }
 
   return EFI_SUCCESS;
@@ -875,6 +1027,9 @@ AddtoBootConfigList (BOOLEAN BootConfigFlag,
   NewNode = (struct BootConfigParamNode *)
                AllocateBootConfigNode (ParamKeyLen + SIZE_OF_DELIM +
                SIZE_OF_DELIM + ParamValueLen);
+  if (!NewNode) {
+    return;
+  }
   gBS->CopyMem (NewNode->param, (CHAR8*)ParamKey, ParamKeyLen);
   if (ParamValue) {
     gBS->CopyMem (&NewNode->param[ParamKeyLen], (CHAR8*)ParamValue,
@@ -1033,6 +1188,7 @@ UpdateCmdLine (BootParamlist *BootParamlistPtr,
   CHAR8 RootDevStr[BOOT_DEV_NAME_SIZE_MAX];
   CHAR8 MemOffAmt[MEM_OFF_SIZE];
   BOOLEAN BootConfigFlag = FALSE;
+  CHAR8 UsbCompositionCmdline[COMPOSITION_CMDLINE_LEN]= "\0";
 
   CONST CHAR8 *CmdLine = BootParamlistPtr->CmdLine;
   CHAR8 **FinalCmdLine = &BootParamlistPtr->FinalCmdLine;
@@ -1042,6 +1198,7 @@ UpdateCmdLine (BootParamlist *BootParamlistPtr,
 
   BootConfigListHead = (LIST_ENTRY*) AllocateZeroPool (sizeof (LIST_ENTRY));
   InitializeListHead (BootConfigListHead);
+  CHAR8 *ModemPathStr = NULL;
 
   Status = BoardSerialNum (StrSerialNum, sizeof (StrSerialNum));
   if (Status != EFI_SUCCESS) {
@@ -1272,6 +1429,36 @@ UpdateCmdLine (BootParamlist *BootParamlistPtr,
   AddtoBootConfigList (BootConfigFlag, HwFenceCmdLine, NULL,
                    BootConfigListHead, ParamLen, 0);
 
+  if (EFI_SUCCESS == GetGpuCmdline ()) {
+      ParamLen = AsciiStrLen (GpuCmdLine);
+      BootConfigFlag = IsAndroidBootParam (GpuCmdLine,
+                              ParamLen, HeaderVersion);
+      ADD_PARAM_LEN (BootConfigFlag, ParamLen, CmdLineLen,
+                                          BootConfigLen);
+      AddtoBootConfigList (BootConfigFlag, GpuCmdLine, NULL,
+                        BootConfigListHead, ParamLen, 0);
+  }
+
+  GetAudioFrameWork (AudioFrameWork, &AudioFWLen);
+  if (AudioFWLen) {
+     ParamLen = AsciiStrLen (AndroidBootAudioFW);
+     BootConfigFlag = IsAndroidBootParam (AndroidBootAudioFW,
+     ParamLen, HeaderVersion);
+     ADD_PARAM_LEN (BootConfigFlag, ParamLen,
+     CmdLineLen, BootConfigLen);
+     AddtoBootConfigList (BootConfigFlag, AndroidBootAudioFW, AudioFrameWork,
+     BootConfigListHead, ParamLen, AsciiStrLen (AudioFrameWork));
+     ADD_PARAM_LEN (BootConfigFlag, AsciiStrLen (AudioFrameWork),
+     CmdLineLen, BootConfigLen);
+ }
+  if (EarlyServicesEnabled ()) {
+    CmdLineLen += GetSystemPathByPname (&ModemPathStr,
+                                        MultiSlotBoot,
+                                        Recovery,
+                                        (CHAR16 *)L"modem",
+                                        (CHAR8 *)"modem");
+  }
+
   if (!IsLEVariant ()) {
     DtboIdx = GetDtboIdx ();
     if (DtboIdx != INVALID_PTN) {
@@ -1302,7 +1489,7 @@ UpdateCmdLine (BootParamlist *BootParamlistPtr,
 
   if (!IsRecoveryHasNoKernel () &&
       !Recovery) {
-    *BootForceNormalBoot = '1';
+    BootForceNormalBoot = '1';
   }
 
   if (((IsBuildUseRecoveryAsBoot () ||
@@ -1317,10 +1504,10 @@ UpdateCmdLine (BootParamlist *BootParamlistPtr,
     ADD_PARAM_LEN (BootConfigFlag, ParamLen, CmdLineLen,
                                          BootConfigLen);
     AddtoBootConfigList (BootConfigFlag, AndroidBootForceNormalBoot,
-                    BootForceNormalBoot,
+                    &BootForceNormalBoot,
                     BootConfigListHead, ParamLen,
-                    AsciiStrLen (BootForceNormalBoot));
-    ADD_PARAM_LEN (BootConfigFlag, AsciiStrLen (BootForceNormalBoot),
+                    sizeof (BootForceNormalBoot));
+    ADD_PARAM_LEN (BootConfigFlag, sizeof (BootForceNormalBoot),
                    CmdLineLen, BootConfigLen);
   }
 
@@ -1401,10 +1588,34 @@ UpdateCmdLine (BootParamlist *BootParamlistPtr,
   if (EarlyEthEnabled ()) {
     GetEarlyEthInfoFromPartition (IPv4AddrBufCmdLine,
                                  IPv6AddrBufCmdLine,
-                                 MacEthAddrBufCmdLine);
+                                 MacEthAddrBufCmdLine,
+                                 PhyAddrBufCmdLineCmdLine,
+                                 IFaceAddrBufCmdLine,
+                                 SpeedAddrBufCmdLine);
     CmdLineLen += AsciiStrLen (IPv4AddrBufCmdLine);
     CmdLineLen += AsciiStrLen (IPv6AddrBufCmdLine);
     CmdLineLen += AsciiStrLen (MacEthAddrBufCmdLine);
+    CmdLineLen += AsciiStrLen (PhyAddrBufCmdLineCmdLine);
+    CmdLineLen += AsciiStrLen (IFaceAddrBufCmdLine);
+    CmdLineLen += AsciiStrLen (SpeedAddrBufCmdLine);
+  }
+
+  if (EarlyUsbInitEnabled ()) {
+    GetEarlyUsbCmdlineParam (UsbCompositionCmdline);
+    CmdLineLen += AsciiStrLen (UsbCompositionCmdline);
+  }
+
+  if (BootCpuSelectionEnabled ()) {
+    AsciiSPrint (BootCpuCmdLine, sizeof (BootCpuCmdLine), " boot_cpu=%d",
+                 BootCpuId);
+    ParamLen = AsciiStrLen (BootCpuCmdLine);
+    BootConfigFlag = IsAndroidBootParam (BootCpuCmdLine,
+                          ParamLen, HeaderVersion);
+    ADD_PARAM_LEN (BootConfigFlag, ParamLen,
+                 CmdLineLen, BootConfigLen);
+    AddtoBootConfigList (BootConfigFlag, BootCpuCmdLine, NULL,
+                BootConfigListHead, ParamLen, 0);
+    Param.BootCpuCmdLine = BootCpuCmdLine;
   }
 
   /* 1 extra byte for NULL */
@@ -1427,6 +1638,7 @@ UpdateCmdLine (BootParamlist *BootParamlistPtr,
   Param.ChipBaseBand = ChipBaseBand;
   Param.DisplayCmdLine = DisplayCmdLine;
   Param.HwFenceCmdLine = HwFenceCmdLine;
+  Param.GpuCmdLine = GpuCmdLine;
   Param.CmdLine = CmdLine;
   Param.AlarmBootCmdLine = AlarmBootCmdLine;
   Param.MdtpActiveFlag = MdtpActiveFlag;
@@ -1447,11 +1659,19 @@ UpdateCmdLine (BootParamlist *BootParamlistPtr,
   Param.LEVerityCmdLine = LEVerityCmdLine;
   Param.HeaderVersion = HeaderVersion;
   Param.SystemdSlotEnv = SystemdSlotEnv;
+  Param.ModemPathCmdLine = ModemPathStr;
 
   if (EarlyEthEnabled ()) {
     Param.EarlyIPv4CmdLine = IPv4AddrBufCmdLine;
     Param.EarlyIPv6CmdLine = IPv6AddrBufCmdLine;
     Param.EarlyEthMacCmdLine = MacEthAddrBufCmdLine;
+    Param.EarlyPhyAddrCmdLine = PhyAddrBufCmdLineCmdLine;
+    Param.EarlyIFaceCmdLine = IFaceAddrBufCmdLine;
+    Param.EarlySpeedCmdLine = SpeedAddrBufCmdLine;
+  }
+
+  if (EarlyUsbInitEnabled ()) {
+    Param.UsbCompCmdLine = UsbCompositionCmdline;
   }
 
   if (IsHibernationEnabled ()) {

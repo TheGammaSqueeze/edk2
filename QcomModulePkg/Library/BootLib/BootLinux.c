@@ -32,7 +32,7 @@
  /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -75,8 +75,6 @@
 #include <Protocol/EFIMdtp.h>
 #include <Protocol/EFIScmModeSwitch.h>
 #include <libufdt_sysdeps.h>
-#include <Protocol/EFIKernelInterface.h>
-
 #include "AutoGen.h"
 #include "BootImage.h"
 #include "BootLinux.h"
@@ -85,6 +83,10 @@
 #include "libfdt.h"
 #include "Bootconfig.h"
 #include <ufdt_overlay.h>
+
+#ifndef DISABLE_KERNEL_PROTOCOL
+#include <Protocol/EFIKernelInterface.h>
+#endif
 
 STATIC QCOM_SCM_MODE_SWITCH_PROTOCOL *pQcomScmModeSwitchProtocol = NULL;
 STATIC BOOLEAN BootDevImage;
@@ -112,16 +114,14 @@ SetLinuxBootCpu (UINT32 BootCpu)
   return;
 }
 
-#ifdef LINUX_BOOT_CPU_SELECTION_ENABLED
-#define BootCpuId TARGET_LINUX_BOOT_CPU_ID
-STATIC BOOLEAN
+#ifdef TARGET_LINUX_BOOT_CPU_ID
+BOOLEAN
 BootCpuSelectionEnabled (VOID)
 {
   return TRUE;
 }
 #else
-#define BootCpuId 0
-STATIC BOOLEAN
+BOOLEAN
 BootCpuSelectionEnabled (VOID)
 {
   return FALSE;
@@ -175,23 +175,48 @@ QueryBootParams (UINT64 *KernelLoadAddr, UINT64 *KernelSizeReserved)
           SizeStatus == EFI_SUCCESS);
 }
 
+#ifdef ENABLE_EARLY_SERVICES
+STATIC VOID
+QueryEarlyServiceBootParams (UINT64 *KernelLoadAddr, UINT64 *KernelSizeReserved)
+{
+  *KernelLoadAddr = KERNEL_LOAD_ADDRESS;
+  *KernelSizeReserved = KERNEL_SIZE_RESERVED;
+  return;
+}
+#else
+STATIC VOID
+QueryEarlyServiceBootParams (UINT64 *KernelLoadAddr, UINT64 *KernelSizeReserved)
+{
+  *KernelLoadAddr = 0;
+  *KernelSizeReserved = 0;
+  return;
+}
+#endif
+
 STATIC EFI_STATUS
 UpdateBootParams (BootParamlist *BootParamlistPtr)
 {
   UINT64 KernelSizeReserved;
   UINT64 KernelLoadAddr;
   Kernel64Hdr *Kptr = NULL;
+  UINT64 KernelLoadAddr_new = 0;
+  UINT64 KernelSizeReserved_new = 0;
 
   if (BootParamlistPtr == NULL ) {
     DEBUG ((EFI_D_ERROR, "Invalid input parameters\n"));
     return EFI_INVALID_PARAMETER;
   }
+  QueryEarlyServiceBootParams (&KernelLoadAddr_new, &KernelSizeReserved_new);
 
   /* The three regions Kernel, Ramdisk and DT should be reserved in memory map
    * Query the kernel load address and size from UEFI core, if it's not
    * successful use the predefined load addresses */
   if (QueryBootParams (&KernelLoadAddr, &KernelSizeReserved)) {
-    BootParamlistPtr->KernelLoadAddr = KernelLoadAddr;
+    if (EarlyServicesEnabled ()) {
+      BootParamlistPtr->KernelLoadAddr = KernelLoadAddr_new;
+    } else {
+      BootParamlistPtr->KernelLoadAddr = KernelLoadAddr;
+    }
     if (BootParamlistPtr->BootingWith32BitKernel) {
       BootParamlistPtr->KernelLoadAddr += KERNEL_32BIT_LOAD_OFFSET;
     } else {
@@ -204,7 +229,13 @@ UpdateBootParams (BootParamlist *BootParamlistPtr)
         BootParamlistPtr->KernelLoadAddr += KERNEL_64BIT_LOAD_OFFSET;
       }
     }
-    BootParamlistPtr->KernelEndAddr = KernelLoadAddr + KernelSizeReserved;
+
+    if (EarlyServicesEnabled ()) {
+      BootParamlistPtr->KernelEndAddr =
+          KernelLoadAddr_new + KernelSizeReserved_new;
+    } else {
+      BootParamlistPtr->KernelEndAddr = KernelLoadAddr + KernelSizeReserved;
+    }
   } else {
     DEBUG ((EFI_D_VERBOSE, "QueryBootParams Failed: "));
     /* If Query of boot params fails, RamdiskEndAddress is end of the
@@ -215,19 +246,36 @@ UpdateBootParams (BootParamlist *BootParamlistPtr)
       /* For 32-bit Not all memory is accessible as defined by
          RamdiskEndAddress. Using pre-defined offset for backward
          compatability */
+    if (EarlyServicesEnabled ()) {
       BootParamlistPtr->KernelLoadAddr =
-            (EFI_PHYSICAL_ADDRESS) (BootParamlistPtr->BaseMemory |
+            (EFI_PHYSICAL_ADDRESS) (KernelLoadAddr_new |
                                     PcdGet32 (KernelLoadAddress32));
-      KernelSizeReserved = PcdGet32 (RamdiskEndAddress32);
     } else {
       BootParamlistPtr->KernelLoadAddr =
             (EFI_PHYSICAL_ADDRESS) (BootParamlistPtr->BaseMemory |
+                                    PcdGet32 (KernelLoadAddress32));
+    }
+      KernelSizeReserved = PcdGet32 (RamdiskEndAddress32);
+    } else {
+      if (EarlyServicesEnabled ()) {
+         BootParamlistPtr->KernelLoadAddr =
+            (EFI_PHYSICAL_ADDRESS) (KernelLoadAddr_new |
                                     PcdGet32 (KernelLoadAddress));
+      } else {
+      BootParamlistPtr->KernelLoadAddr =
+            (EFI_PHYSICAL_ADDRESS) (BootParamlistPtr->BaseMemory |
+                                    PcdGet32 (KernelLoadAddress));
+      }
       KernelSizeReserved = PcdGet32 (RamdiskEndAddress);
     }
 
-    BootParamlistPtr->KernelEndAddr = BootParamlistPtr->BaseMemory +
+    if (EarlyServicesEnabled ()) {
+      BootParamlistPtr->KernelEndAddr = KernelLoadAddr_new +
                                        KernelSizeReserved;
+    } else {
+      BootParamlistPtr->KernelEndAddr = BootParamlistPtr->BaseMemory +
+                                       KernelSizeReserved;
+    }
     DEBUG ((EFI_D_VERBOSE, "calculating dynamic offsets\n"));
   }
 
@@ -1159,15 +1207,13 @@ BootLinux (BootInfo *Info)
   CHAR16 *PartitionName = NULL;
   BOOLEAN Recovery = FALSE;
   BOOLEAN AlarmBoot = FALSE;
-  BOOLEAN FlashlessBoot = Info->FlashlessBoot;
+  BOOLEAN FlashlessBoot;
   CHAR8 SilentBootMode;
 
   LINUX_KERNEL LinuxKernel;
   LINUX_KERNEL32 LinuxKernel32;
   UINT32 RamdiskSizeActual = 0;
   UINT32 SecondSizeActual = 0;
-  UINT64 KernelSizeReserved = 0;
-  UINTN DataSize;
 
   /*Boot Image header information variables*/
   CHAR8 FfbmStr[FFBM_MODE_BUF_SIZE] = {'\0'};
@@ -1175,15 +1221,21 @@ BootLinux (BootInfo *Info)
 
   BootParamlist BootParamlistPtr = {0};
 
+#ifndef DISABLE_KERNEL_PROTOCOL
+  UINT64 KernelSizeReserved = 0;
+  UINTN DataSize;
   EFI_KERNEL_PROTOCOL *KernIntf = NULL;
   Thread *ThreadNum;
-  VOID *StackBase;
-  VOID **StackCurrent;
+#endif
+  VOID *StackBase = NULL;
+  VOID **StackCurrent = NULL;
 
   if (Info == NULL) {
     DEBUG ((EFI_D_ERROR, "BootLinux: invalid parameter Info\n"));
     return EFI_INVALID_PARAMETER;
   }
+
+  FlashlessBoot = Info->FlashlessBoot;
 
   if (IsVmEnabled ()) {
     Status = CheckAndSetVmData (&BootParamlistPtr);
@@ -1411,6 +1463,7 @@ BootLinux (BootInfo *Info)
       IsModeSwitch = TRUE;
   }
 
+#ifndef DISABLE_KERNEL_PROTOCOL
   Status = gBS->LocateProtocol (&gEfiKernelProtocolGuid, NULL,
         (VOID **)&KernIntf);
 
@@ -1435,6 +1488,8 @@ BootLinux (BootInfo *Info)
     DEBUG ((EFI_D_INFO, "Failed to get size of kernel region\n"));
     return Status;
   }
+#endif
+
   if (BootCpuSelectionEnabled ()) {
     SetLinuxBootCpu (BootCpuId);
   }
@@ -1450,13 +1505,17 @@ BootLinux (BootInfo *Info)
     goto Exit;
   }
 
+
+#ifdef DISABLE_KERNEL_PROTOCOL
+  PreparePlatformHardware ();
+#else
   PreparePlatformHardware (KernIntf, (VOID *)BootParamlistPtr.KernelLoadAddr,
                   (UINTN)KernelSizeReserved,
                   (VOID *)BootParamlistPtr.RamdiskLoadAddr,
                   (UINTN)RamdiskSizeActual,
                   (VOID *)BootParamlistPtr.DeviceTreeLoadAddr, DT_SIZE_2MB,
                   (VOID *)StackCurrent, (UINTN)StackBase);
-
+#endif
   BootStatsSetTimeStamp (BS_BL_END);
 
   if (IsVmEnabled ()) {
@@ -1530,7 +1589,7 @@ CheckImageHeader (VOID *ImageHdrBuffer,
   boot_img_hdr_v3 *RecoveryImgHdrV3 = NULL;
   boot_img_hdr_v4 *BootImgHdrV4;
   vendor_boot_img_hdr_v4 *VendorBootImgHdrV4;
-  boot_img_hdr_v4 *RecoveryImgHdrV4;
+  boot_img_hdr_v4 *RecoveryImgHdrV4 = NULL;
 
   UINT32 KernelSizeActual = 0;
   UINT32 DtSizeActual = 0;
@@ -1954,6 +2013,18 @@ BOOLEAN IsBuildAsSystemRootImage (BootParamlist *BootParamlistPtr)
 {
    return BootParamlistPtr->RamdiskSize == 0;
 }
+
+#ifdef ENABLE_EARLY_SERVICES
+BOOLEAN EarlyServicesEnabled (VOID)
+{
+  return TRUE;
+}
+#else
+BOOLEAN EarlyServicesEnabled (VOID)
+{
+  return FALSE;
+}
+#endif
 
 #ifdef BUILD_USES_RECOVERY_AS_BOOT
 BOOLEAN IsBuildUseRecoveryAsBoot (VOID)

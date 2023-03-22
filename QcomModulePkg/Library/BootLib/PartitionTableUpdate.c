@@ -30,7 +30,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -1332,6 +1332,36 @@ IsSuffixEmpty (Slot *CheckSlot)
   return FALSE;
 }
 
+BOOLEAN IsSlotsUbootable (VOID)
+{
+  Slot Slots[] = {{L"_a"}, {L"_b"}};
+  struct PartitionEntry *BootEntry = NULL;
+  UINT32 Count = 0;
+  UINT32 UnbootableCount = 0;
+  BOOLEAN IsMultiSlot = PartitionHasMultiSlot ((CONST CHAR16 *)L"boot");
+
+  if (IsMultiSlot == FALSE) {
+    return FALSE;
+  }
+
+  for (Count = 0; Count < ARRAY_SIZE (Slots); Count++) {
+    BootEntry = GetBootPartitionEntry (&Slots[Count]);
+    if (BootEntry == NULL) {
+      DEBUG ((EFI_D_ERROR, "CheckBootableSlot: No boot partition "
+                           "entry for slot %s\n", Slots[Count].Suffix));
+      return FALSE;
+    }
+    if (BootEntry->PartEntry.Attributes & PART_ATT_UNBOOTABLE_VAL) {
+      UnbootableCount += 1;
+    }
+  }
+
+  if (UnbootableCount < ARRAY_SIZE (Slots)) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
 STATIC EFI_STATUS
 GetAtomicABActiveSlot (Slot *ActiveSlot)
 {
@@ -1572,7 +1602,7 @@ SetActiveSlot (Slot *NewSlot, BOOLEAN ResetSuccessBit)
   return EFI_SUCCESS;
 }
 
-EFI_STATUS HandleActiveSlotUnbootable (VOID)
+EFI_STATUS HandleActiveSlotUnbootable (BOOLEAN ForceBootAlternateSlot)
 {
   EFI_STATUS Status = EFI_SUCCESS;
   struct PartitionEntry *BootEntry = NULL;
@@ -1622,7 +1652,9 @@ EFI_STATUS HandleActiveSlotUnbootable (VOID)
   BootSuccess = (BootEntry->PartEntry.Attributes & PART_ATT_SUCCESSFUL_VAL) >>
                 PART_ATT_SUCCESS_BIT;
 
-  if (Unbootable == 0 && BootSuccess == 1) {
+  if ((Unbootable == 0 &&
+       BootSuccess == 1) ||
+       ForceBootAlternateSlot) {
     DEBUG (
         (EFI_D_INFO, "Alternate Slot %s is bootable\n", AlternateSlot->Suffix));
     GUARD (SetActiveSlot (AlternateSlot, FALSE));
@@ -1778,7 +1810,7 @@ FindBootableSlot (Slot *BootableSlot)
   } else {
     DEBUG ((EFI_D_INFO, "Slot %s is unbootable, trying alternate slot\n",
             BootableSlot->Suffix));
-    GUARD_OUT (HandleActiveSlotUnbootable ());
+    GUARD_OUT (HandleActiveSlotUnbootable (FALSE));
   }
 
   /* Validate slot suffix and partition guids */

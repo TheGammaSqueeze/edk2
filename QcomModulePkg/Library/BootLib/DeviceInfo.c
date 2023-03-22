@@ -29,7 +29,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -132,6 +132,46 @@ EnableChargingScreen (BOOLEAN IsEnabled)
       return Status;
     }
   }
+
+  return Status;
+}
+
+EFI_STATUS
+StoreAudioFrameWork (CONST CHAR8 *CmdLine, UINT32 CmdLineLen)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+
+  if (CmdLineLen > ARRAY_SIZE (DevInfo.AudioFramework)) {
+    DEBUG ((EFI_D_ERROR, "Audio framework is invalid, size too large!\n"));
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  gBS->SetMem (DevInfo.AudioFramework, sizeof (DevInfo.AudioFramework), 0);
+  gBS->CopyMem (DevInfo.AudioFramework, (CHAR8 *) CmdLine, CmdLineLen);
+
+  Status =
+      ReadWriteDeviceInfo (WRITE_CONFIG, (VOID *)&DevInfo, sizeof (DevInfo));
+  if (Status != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "Unable to store audio framework: %r\n", Status));
+    return Status;
+  }
+  return Status;
+}
+
+EFI_STATUS
+ReadAudioFrameWork (CHAR8 **CmdLine, UINT32 *CmdLineLen)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+
+  Status =
+      ReadWriteDeviceInfo (READ_CONFIG, (VOID *)&DevInfo, sizeof (DevInfo));
+  if (Status != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "Unable to read audio framework: %r\n", Status));
+    return Status;
+  }
+
+  *CmdLine = DevInfo.AudioFramework;
+  *CmdLineLen = ARRAY_SIZE (DevInfo.AudioFramework);
 
   return Status;
 }
@@ -483,8 +523,8 @@ EFI_STATUS WritePersistentValue (CONST UINT8 *Name, UINTN NameSize,
    EFI_STATUS Status = EFI_SUCCESS;
    BOOLEAN    NameFound = FALSE;
    BOOLEAN    SlotFound = FALSE;
-   UINT32     NameFoundIndex;
-   UINT32     SlotFoundIndex;
+   UINT32     NameFoundIndex = 0;
+   UINT32     SlotFoundIndex = 0;
    UINT32     i;
 
    if (FirstReadDevInfo) {

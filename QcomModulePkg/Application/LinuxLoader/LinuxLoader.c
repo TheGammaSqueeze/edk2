@@ -33,7 +33,8 @@
 /*
  *  Changes from Qualcomm Innovation Center are provided under the following license:
  *
- *  Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  Copyright (c) 2022 - 2023 Qualcomm Innovation Center, Inc. All rights
+ *  reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -95,6 +96,7 @@ STATIC BOOLEAN BootReasonAlarm = FALSE;
 STATIC BOOLEAN BootIntoFastboot = FALSE;
 STATIC BOOLEAN BootIntoRecovery = FALSE;
 UINT64 FlashlessBootImageAddr = 0;
+STATIC DeviceInfo DevInfo;
 
 // This function is used to Deactivate MDTP by entering recovery UI
 STATIC EFI_STATUS MdtpDisable (VOID)
@@ -144,22 +146,64 @@ GetRebootReason (UINT32 *ResetReason)
   return Status;
 }
 
+STATIC VOID
+SetDefaultAudioFw ()
+{
+  CHAR8 AudioFW[MAX_AUDIO_FW_LENGTH];
+  STATIC CHAR8* Src;
+  STATIC CHAR8* AUDIOFRAMEWORK;
+  STATIC UINT32 Length;
+  EFI_STATUS Status;
+
+  AUDIOFRAMEWORK = GetAudioFw ();
+  Status = ReadAudioFrameWork (&Src, &Length);
+  if ((AsciiStrCmp (Src, "audioreach") == 0) ||
+                              (AsciiStrCmp (Src, "elite") == 0)) {
+    if (Status == EFI_SUCCESS) {
+      if (AsciiStrLen (Src) == 0) {
+        if (AsciiStrLen (AUDIOFRAMEWORK) > 0) {
+          AsciiStrnCpyS (AudioFW, MAX_AUDIO_FW_LENGTH, AUDIOFRAMEWORK,
+          AsciiStrLen (AUDIOFRAMEWORK));
+          StoreAudioFrameWork (AudioFW, AsciiStrLen (AUDIOFRAMEWORK));
+        }
+      }
+    }
+    else {
+      DEBUG ((EFI_D_ERROR, "AUDIOFRAMEWORK is NOT updated length =%d, %a\n",
+      Length, AUDIOFRAMEWORK));
+    }
+  }
+  else {
+    if (Src != NULL) {
+      gBS->SetMem (DevInfo.AudioFramework, sizeof (DevInfo.AudioFramework), 0);
+      gBS->CopyMem (DevInfo.AudioFramework, AUDIOFRAMEWORK,
+                                      AsciiStrLen (AUDIOFRAMEWORK));
+      Status =
+      ReadWriteDeviceInfo (WRITE_CONFIG, (VOID *)&DevInfo, sizeof (DevInfo));
+      if (Status != EFI_SUCCESS) {
+        DEBUG ((EFI_D_ERROR, "Unable to store audio framework: %r\n", Status));
+        return;
+      }
+    }
+  }
+}
+
 BOOLEAN IsABRetryCountUpdateRequired (VOID)
 {
-  BOOLEAN BatteryStatus;
+ BOOLEAN BatteryStatus;
 
-  /* Check power off charging */
-  TargetPauseForBatteryCharge (&BatteryStatus);
+ /* Check power off charging */
+ TargetPauseForBatteryCharge (&BatteryStatus);
 
-  /* Do not decrement bootable retry count in below states:
-     * fastboot, fastbootd, charger, recovery
-     */
-  if ((BatteryStatus &&
-       IsChargingScreenEnable ()) ||
-       BootIntoFastboot ||
-       BootIntoRecovery) {
-    return FALSE;
-  }
+ /* Do not decrement bootable retry count in below states:
+ * fastboot, fastbootd, charger, recovery
+ */
+ if ((BatteryStatus &&
+ IsChargingScreenEnable ()) ||
+ BootIntoFastboot ||
+ BootIntoRecovery) {
+  return FALSE;
+ }
   return TRUE;
 }
 
@@ -196,6 +240,8 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
          (UINTN)LinuxLoaderEntry & (~ (0xFFF))));
   DEBUG ((EFI_D_VERBOSE, "LinuxLoaderEntry Address: 0x%llx\n",
          (UINTN)LinuxLoaderEntry));
+
+  BootStatsSetInitTimeStamp ();
 
   Status = InitThreadUnsafeStack ();
 
@@ -254,6 +300,8 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
     DEBUG ((EFI_D_ERROR, "Error reading key status: %r\n", Status));
     goto stack_guard_update_default;
   }
+
+  SetDefaultAudioFw ();
 
   // check for reboot mode
   Status = GetRebootReason (&BootReason);

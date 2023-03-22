@@ -49,7 +49,7 @@ found at
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -190,6 +190,7 @@ STATIC CHAR8 CurrentSlotFB[MAX_SLOT_SUFFIX_SZ];
   } while (0);
 
 #define MAX_DISPLAY_PANEL_OVERRIDE 256
+#define MAX_GPU_CONFIG_OVERRIDE 256
 
 /*This variable is used to skip populating the FastbootVar
  * When PopulateMultiSlotInfo called while flashing each Lun
@@ -1069,6 +1070,57 @@ FastbootUpdateAttr (CONST CHAR16 *SlotSuffix)
   }
 }
 
+#ifdef NAND_UBI_VOLUME_FLASHING_ENABLED
+/* UBI Volume flashing */
+STATIC
+EFI_STATUS
+HandleUbiVolFlash (
+  IN CHAR16  *VolumeName,
+  IN UINT32 VolumeMaxSize,
+  IN VOID   *Image,
+  IN UINT64   Size)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+  UINT32 UbiPageSize;
+  UINT32 UbiBlockSize;
+  EFI_UBI_FLASHER_PROTOCOL *Ubi;
+  UBI_FLASHER_HANDLE UbiFlasherHandle;
+  CHAR8 VolumeNameAscii[MAX_GPT_NAME_SIZE] = {'\0'};
+
+  Status = gBS->LocateProtocol (&gEfiUbiFlasherProtocolGuid,
+                                NULL,
+                                (VOID **) &Ubi);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "UBI Volume flashing not supported\n"));
+    return Status;
+  }
+
+  UnicodeStrToAsciiStr (VolumeName, VolumeNameAscii);
+  Status = Ubi->UbiFlasherOpen (VolumeNameAscii,
+                                &UbiFlasherHandle,
+                                &UbiPageSize,
+                                &UbiBlockSize);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to open UBI volume\n"));
+    return Status;
+  }
+
+  /* Note: sparse image is not supported for ubi volume flashing */
+  Status = Ubi->UbiFlasherWrite (UbiFlasherHandle, 1, Image, Size);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to write UBI volume\n"));
+  }
+
+  Status = Ubi->UbiFlasherClose (UbiFlasherHandle);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to close UBI volume\n"));
+    return Status;
+  }
+
+  return Status;
+}
+#endif
+
 /* Raw Image flashing */
 STATIC
 EFI_STATUS
@@ -1084,7 +1136,15 @@ HandleRawImgFlash (IN CHAR16 *PartitionName,
   CHAR16 SlotSuffix[MAX_SLOT_SUFFIX_SZ];
   BOOLEAN MultiSlotBoot = PartitionHasMultiSlot ((CONST CHAR16 *)L"boot");
   BOOLEAN HasSlot = FALSE;
+#ifdef NAND_UBI_VOLUME_FLASHING_ENABLED
+  CHAR16 OrigPartitionName[MAX_GPT_NAME_SIZE];
 
+  /* The MultiSlot logic may not be applicable for all volumes, thus we need
+   * to retain the original partition name for volume flashing.
+  */
+  StrnCpyS (OrigPartitionName, PartitionMaxSize,
+                PartitionName, PartitionMaxSize);
+#endif
   /* For multislot boot the partition may not support a/b slots.
    * Look for default partition, if it does not exist then try for a/b
    */
@@ -1093,8 +1153,15 @@ HandleRawImgFlash (IN CHAR16 *PartitionName,
                                    MAX_SLOT_SUFFIX_SZ);
 
   Status = PartitionGetInfo (PartitionName, &BlockIo, &Handle);
-  if (Status != EFI_SUCCESS)
+  if (Status != EFI_SUCCESS) {
+#ifdef NAND_UBI_VOLUME_FLASHING_ENABLED
+    DEBUG ((EFI_D_ERROR, "[%s] Partition Not Found - trying volume\n",
+            OrigPartitionName));
+    Status = HandleUbiVolFlash (OrigPartitionName,
+            ARRAY_SIZE (OrigPartitionName), Image, Size);
+#endif
     return Status;
+  }
   if (!BlockIo) {
     DEBUG ((EFI_D_ERROR, "BlockIo for %a is corrupted\n", PartitionName));
     return EFI_VOLUME_CORRUPTED;
@@ -2944,7 +3011,13 @@ is_display_supported ( VOID )
    return 1;
 }
 
-#ifndef TARGET_BOARD_TYPE_AUTO
+#if TARGET_BOARD_TYPE_AUTO
+STATIC VOID
+RebootDeviceRecovery ( VOID )
+{
+
+}
+#else
 STATIC VOID
 RebootDeviceRecovery ( VOID )
 {
@@ -2952,12 +3025,6 @@ RebootDeviceRecovery ( VOID )
       !IsEnableDisplayMenuFlagSupported ()) {
      RebootDevice (RECOVERY_MODE);
    }
-
-}
-#else
-STATIC VOID
-RebootDeviceRecovery ( VOID )
-{
 
 }
 #endif
@@ -3234,6 +3301,63 @@ CmdOemSetHwFenceValue (CONST CHAR8 *arg, VOID *data, UINT32 Size)
   } else {
     AsciiStrnCatS (Resp, sizeof (Resp), ": done", AsciiStrLen (": done"));
     FastbootOkay (Resp);
+  }
+}
+
+STATIC VOID
+CmdOemSetGpuPreemptionValue (CONST CHAR8 *arg, VOID *data, UINT32 Size)
+{
+  EFI_STATUS Status;
+  CHAR8 Resp[MAX_RSP_SIZE] = "Set GPU HW Preemption: ";
+  CHAR8 GpuPreemptionValue[MAX_GPU_CONFIG_OVERRIDE] =
+          " msm_kgsl.preempt_enable=";
+  INTN Pos = 0;
+
+  for (Pos = 0; Pos < AsciiStrLen (arg); Pos++) {
+    if (arg[Pos] == ' ') {
+      arg++;
+      Pos--;
+    } else {
+      break;
+    }
+  }
+
+  AsciiStrnCatS (GpuPreemptionValue,
+                 MAX_GPU_CONFIG_OVERRIDE,
+                 arg,
+                 AsciiStrLen (arg));
+
+  Status = gRT->SetVariable ((CHAR16 *)L"GpuConfiguration",
+                               &gQcomTokenSpaceGuid,
+                               EFI_VARIABLE_RUNTIME_ACCESS |
+                               EFI_VARIABLE_BOOTSERVICE_ACCESS |
+                               EFI_VARIABLE_NON_VOLATILE,
+                               AsciiStrLen (GpuPreemptionValue),
+                               (VOID *)GpuPreemptionValue);
+
+  if (EFI_ERROR (Status)) {
+    AsciiStrnCatS (Resp, sizeof (Resp), ": failed!", AsciiStrLen (": failed!"));
+    FastbootFail (Resp);
+  } else {
+    AsciiStrnCatS (Resp, sizeof (Resp), ": done", AsciiStrLen (": done"));
+    FastbootOkay (Resp);
+  }
+}
+
+STATIC VOID
+CmdOemAudioFrameWork (CONST CHAR8 *Arg, VOID *Data, UINT32 Size)
+{
+  EFI_STATUS Status;
+
+  if (Arg[0] == ' ') {
+     Arg++;
+  }
+
+  Status = StoreAudioFrameWork (Arg, AsciiStrLen (Arg));
+  if (Status != EFI_SUCCESS) {
+    FastbootFail ("Failed to store Audio framework");
+  } else {
+    FastbootOkay ("");
   }
 }
 
@@ -3834,6 +3958,7 @@ FastbootCommandSetup (IN VOID *Base, IN UINT64 Size)
       {"oem off-mode-charge", CmdOemOffModeCharger},
       {"oem select-display-panel", CmdOemSelectDisplayPanel},
       {"oem set-hw-fence-value", CmdOemSetHwFenceValue},
+      {"oem set-gpu-preemption", CmdOemSetGpuPreemptionValue},
       {"oem device-info", CmdOemDevinfo},
 #if HIBERNATION_SUPPORT_NO_AES
       {"oem golden-snapshot", CmdGoldenSnapshot},
@@ -3843,6 +3968,7 @@ FastbootCommandSetup (IN VOID *Base, IN UINT64 Size)
       {"reboot-bootloader", CmdRebootBootloader},
       {"getvar:", CmdGetVar},
       {"download:", CmdDownload},
+      {"oem audio-framework", CmdOemAudioFrameWork},
   };
 
   /* Register the commands only for non-user builds */

@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, 2021, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2020 The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -33,28 +33,24 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear.
  */
 
-#ifndef __EARLY_ETHERNET__
-#define __EARLY_ETHERNET__
+#ifndef __EARLY_USB_INIT__
+#define __EARLY_USB_INIT__
 
-#define MAX_IP_ADDR_BUF      64
-#define EARLY_ADDR_TERMINATOR   '#'
-#define IP_ADDR_STR_OFFSET   0
-#define MAC_ADDR_LEN   17
-#define PHY_ADDR_LEN   33
-#define IFACE_LEN      8
-#define SPEED_LEN      6
+#define ___packed __attribute__((packed))
 
-/**
- *  Reads partition and try to extract IP addresses
- *  and MAC address if found.
- *
- * @return EFI_STATUS
- */
-EFI_STATUS
-GetEarlyEthInfoFromPartition (CHAR8 *ipv4buf, CHAR8 *ipv6buf, CHAR8 *macbuf,
-                              CHAR8 *phyaddrbuf, CHAR8 *ifacebuf,
-                              CHAR8 *speedbuf);
+#define USB_COMPOSITION_PARTITION_NAME L"usb_qti"
 
-BOOLEAN
-EarlyEthEnabled ();
+#define USB_PID_SZ     5
+#define BOARD_PRODUCT_ID_SZ     32
+
+#define USB_COMP_MAGIC     "USB_COMP!"
+#define USB_COMP_MAGIC_SIZE     10
+#define COMPOSITION_CMDLINE_LEN     96
+#define USB_COMPOSITION_INFO_MAX     128
+extern CHAR8 UsbCompositionCmdline[COMPOSITION_CMDLINE_LEN];
+
+
+BOOLEAN EarlyUsbInitEnabled (VOID) ;
+BOOLEAN IsUsbQtiPartitionPresent (VOID);
+VOID GetEarlyUsbCmdlineParam (CHAR8 *UsbCompositionCmdlinePtr);
 #endif
