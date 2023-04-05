@@ -625,26 +625,17 @@ QueryMemoryCellSize (IN VOID *Fdt, OUT UINT32 *MemoryCellLen)
   return EFI_SUCCESS;
 }
 
-BOOLEAN IsCarveoutRemovalEnabled (VOID *Fdt)
+#ifdef REMOVE_CARVEOUT_REGION
+BOOLEAN IsCarveoutRemovalEnabled (VOID)
 {
-  INT32 ResMemOffset = 0;
-  CONST struct fdt_property *Prop = NULL;
-  INT32 PropLen = 0;
-
-  ResMemOffset = FdtPathOffset (Fdt, "/reserved-memory");
-  if (ResMemOffset < 0) {
-    DEBUG ((EFI_D_ERROR, "reserved-memory node not found in device tree\n"));
-    return FALSE;
-  } else {
-    Prop = fdt_get_property (Fdt, ResMemOffset, "removes_carveout_region",
-                             &PropLen);
-    if (!Prop) {
-      return FALSE;
-    }
-  }
-
   return TRUE;
 }
+#else
+BOOLEAN IsCarveoutRemovalEnabled (VOID)
+{
+  return FALSE;
+}
+#endif
 
 STATIC
 EFI_STATUS

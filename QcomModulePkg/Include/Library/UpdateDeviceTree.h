@@ -168,5 +168,5 @@ GetUpdatedRamPartitions (VOID *Fdt,
                          UINT32 *NumUpdPartitions);
 
 BOOLEAN
-IsCarveoutRemovalEnabled (VOID *Fdt);
+IsCarveoutRemovalEnabled (VOID);
 #endif

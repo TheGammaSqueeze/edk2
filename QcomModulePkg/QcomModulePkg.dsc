@@ -215,6 +215,9 @@
   !if $(TARGET_SUPPORTS_EARLY_USB_INIT)
       GCC:*_*_*_PP_FLAGS = -DTARGET_SUPPORTS_EARLY_USB_INIT
   !endif
+  !if $(REMOVE_CARVEOUT_REGION) == 1
+      GCC:*_*_*_CC_FLAGS = -DREMOVE_CARVEOUT_REGION
+  !endif
 
 [PcdsFixedAtBuild.common]
 

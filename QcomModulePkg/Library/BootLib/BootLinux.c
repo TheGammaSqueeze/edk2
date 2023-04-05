@@ -1437,7 +1437,7 @@ BootLinux (BootInfo *Info)
    */
   GetQrksKernelStartAddress ();
 
-  if (IsCarveoutRemovalEnabled ((VOID *)BootParamlistPtr.DeviceTreeLoadAddr)) {
+  if (IsCarveoutRemovalEnabled ()) {
     Status = ReadRamPartitions (&RamPartitions, &NumPartitions);
     if (EFI_ERROR (Status)) {
       DEBUG ((EFI_D_ERROR, "Error returned from ReadRamPartitions %r\n",
