@@ -12,7 +12,7 @@ DISABLE_PARALLEL_DOWNLOAD_FLASH=1
 
 ################################################################################
 . ${ROOT_DIR}/${ABL_SRC}/QcomModulePkg/build.config.msm.common
-if [ "${SOC_NAME}" = "lemans" ]; then
+if [ "${SOC_NAME}" = "lemans" ] || [ "${SOC_NAME}" = "monaco_auto" ]; then
   . ${ROOT_DIR}/${ABL_SRC}/QcomModulePkg/build.config.msm.signature_v2
 else
   . ${ROOT_DIR}/${ABL_SRC}/QcomModulePkg/build.config.msm.signature_v1
