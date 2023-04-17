@@ -73,6 +73,8 @@
 #include <Uefi/UefiBaseType.h>
 #include <Library/FdtRw.h>
 
+#define SUBSET_PART_CHIPINFO_BASE_REVISION 0x0000000000010002
+
 /* Look up table for cpu partial goods
  *
  * NOTE: Array size of PartialGoodsCpuType0 and
@@ -524,6 +526,12 @@ static struct PartialGoods PartialGoodsMmType[] = {
     {BIT (EFICHIPINFO_PART_NPU),
      "/soc",
      {"qcom,npu", "status", "ok", "no"}},
+    {BIT (EFICHIPINFO_PART_NSP),
+     "/soc",
+     {"remoteproc-cdsp", "status", "ok", "no"}},
+    {BIT (EFICHIPINFO_PART_EVA),
+     "/soc",
+     {"qcom,cvp", "status", "ok", "no"}},
 };
 
 STATIC EFI_STATUS
@@ -616,11 +624,25 @@ FindNodeAndUpdateProperty (VOID *fdt,
                       (CONST VOID *)SNode->ReplaceStr,
                       AsciiStrLen (SNode->ReplaceStr) + 1);
     if (!Ret) {
-      DEBUG ((EFI_D_INFO, "Partial goods (%a) status property disabled\n",
-              SNode->SubNodeName));
+      DEBUG ((EFI_D_INFO, "Partial goods (%a) %a property disabled\n",
+              SNode->SubNodeName, SNode->PropertyName));
     } else {
       DEBUG ((EFI_D_ERROR, "Failed to update property: %a, ret =%d \n",
               SNode->PropertyName, Ret));
+    }
+
+    if (!AsciiStrCmp (Table->ParentNode, "/cpus")) {
+      /* Add/Replace the status property to fail */
+      Ret = FdtSetProp (fdt, SubNodeOffset, "status",
+                        (CONST VOID *)"fail",
+                        AsciiStrLen ("fail") + 1);
+      if (!Ret) {
+        DEBUG ((EFI_D_INFO, "Partial goods (%a) status property updated\n",
+                SNode->SubNodeName));
+      } else {
+        DEBUG ((EFI_D_ERROR, "Failed to update property: %a, ret =%d \n",
+                SNode->SubNodeName, Ret));
+      }
     }
   }
 }
@@ -634,9 +656,16 @@ ReadCpuPartialGoods (EFI_CHIPINFO_PROTOCOL *pChipInfoProtocol, UINT32 *Value)
    /* Ensure to reset the Value before checking CPU subset */
   *Value = 0;
 
-  Status =
-      pChipInfoProtocol->GetSubsetCPUs (pChipInfoProtocol, CpuCluster,
-                                           Value);
+  if (pChipInfoProtocol->Revision >= EFI_CHIPINFO_PROTOCOL_REVISION_5) {
+    DEBUG ((EFI_D_VERBOSE, "Accessing new Partial APIs\n"));
+    Status =
+        pChipInfoProtocol->GetDisabledCPUs (pChipInfoProtocol, CpuCluster,
+                                             Value);
+  } else {
+    Status =
+        pChipInfoProtocol->GetSubsetCPUs (pChipInfoProtocol, CpuCluster,
+                                             Value);
+  }
   if (EFI_ERROR (Status)) {
     DEBUG ((EFI_D_VERBOSE, "Failed to get subset[%d] CPU. %r\n",
             CpuCluster, Status));
@@ -652,16 +681,29 @@ STATIC EFI_STATUS
 ReadMMPartialGoods (EFI_CHIPINFO_PROTOCOL *pChipInfoProtocol, UINT32 *Value)
 {
   UINT32 i;
+  UINT32 SubsetVal = 0;
+  BOOLEAN SubsetBoolVal = FALSE;
   EFI_STATUS Status = EFI_SUCCESS;
-  UINT32 SubsetVal;
 
   *Value = 0;
   for (i = 1; i < EFICHIPINFO_NUM_PARTS; i++) {
-    /* Ensure to reset the Value before checking for Part Subset*/
-    SubsetVal = 0;
 
-    Status =
-        pChipInfoProtocol->GetSubsetPart (pChipInfoProtocol, i, &SubsetVal);
+    if (pChipInfoProtocol->Revision >= EFI_CHIPINFO_PROTOCOL_REVISION_5) {
+      /* Ensure to reset the Value before checking for Part Subset*/
+      SubsetBoolVal = FALSE;
+      Status =
+        pChipInfoProtocol->IsPartDisabled (pChipInfoProtocol,
+                                            i, 0, &SubsetBoolVal);
+      SubsetVal = (UINT32) SubsetBoolVal;
+
+    } else {
+      /* Ensure to reset the Value before checking for Part Subset*/
+      SubsetVal = 0;
+      Status =
+          pChipInfoProtocol->GetSubsetPart (pChipInfoProtocol, i, &SubsetVal);
+
+    }
+
     if (EFI_ERROR (Status)) {
       DEBUG ((EFI_D_VERBOSE, "Failed to get MM subset[%d] part. %r\n", i,
               Status));
@@ -692,8 +734,9 @@ UpdatePartialGoodsNode (VOID *fdt)
   if (EFI_ERROR (Status))
     return Status;
 
-  if (pChipInfoProtocol->Revision < EFI_CHIPINFO_PROTOCOL_REVISION)
+  if (pChipInfoProtocol->Revision < SUBSET_PART_CHIPINFO_BASE_REVISION) {
     return Status;
+  }
 
   /* Read and update Multimedia Partial Goods Nodes */
   Status = ReadMMPartialGoods (pChipInfoProtocol, &PartialGoodsMMValue);

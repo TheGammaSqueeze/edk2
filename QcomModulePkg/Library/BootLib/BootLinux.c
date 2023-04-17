@@ -75,6 +75,7 @@
 #include <Protocol/EFIMdtp.h>
 #include <Protocol/EFIScmModeSwitch.h>
 #include <libufdt_sysdeps.h>
+#include <FastbootLib/FastbootCmds.h>
 #include "AutoGen.h"
 #include "BootImage.h"
 #include "BootLinux.h"
@@ -1229,9 +1230,9 @@ BootLinux (BootInfo *Info)
   UINTN DataSize;
   EFI_KERNEL_PROTOCOL *KernIntf = NULL;
   Thread *ThreadNum;
-#endif
   VOID *StackBase = NULL;
   VOID **StackCurrent = NULL;
+#endif
 
   RamPartitionEntry *RamPartitions = NULL;
   UINT32 NumPartitions = 0;
@@ -1967,10 +1968,16 @@ LoadImage (CHAR16 *Pname, VOID **ImageBuffer,
     return EFI_BAD_BUFFER_SIZE;
   }
 
-  *ImageBuffer = AllocatePages (ALIGN_PAGES (ImageSize, ALIGNMENT_MASK_4KB));
+  /* In case of fastboot continue command, data buffer are already allocated
+   * and checked by fastboot, so just use this buffer for image buffer.
+   */
+  *ImageBuffer = FastbootDloadBuffer ();
   if (!*ImageBuffer) {
-    DEBUG ((EFI_D_ERROR, "No resources available for ImageBuffer\n"));
-    return EFI_OUT_OF_RESOURCES;
+    *ImageBuffer = AllocatePages (ALIGN_PAGES (ImageSize, ALIGNMENT_MASK_4KB));
+    if (!*ImageBuffer) {
+      DEBUG ((EFI_D_ERROR, "No resources available for ImageBuffer\n"));
+      return EFI_OUT_OF_RESOURCES;
+    }
   }
 
   BootStatsSetTimeStamp (BS_KERNEL_LOAD_BOOT_START);
@@ -2169,7 +2176,7 @@ BOOLEAN IsHibernationEnabled (VOID)
 
   GetPartitionCount (&PtnCount);
 
-  PtnIdx = GetPartitionIndex ((CHAR16 *)L"swap_a");
+  PtnIdx = GetPartitionIndex ((CHAR16 *)SWAP_PARTITION_NAME);
 
   if (PtnIdx < PtnCount &&
       PtnIdx != INVALID_PTN) {
