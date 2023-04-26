@@ -74,6 +74,7 @@
 #include <Library/Rtic.h>
 #include <Protocol/EFIMdtp.h>
 #include <Protocol/EFIScmModeSwitch.h>
+#include <Protocol/EFIRmVm.h>
 #include <libufdt_sysdeps.h>
 #include <FastbootLib/FastbootCmds.h>
 #include "AutoGen.h"
@@ -88,6 +89,9 @@
 #ifndef DISABLE_KERNEL_PROTOCOL
 #include <Protocol/EFIKernelInterface.h>
 #endif
+
+#define HLOS_VMID   3
+#define RM_VMID     255
 
 STATIC QCOM_SCM_MODE_SWITCH_PROTOCOL *pQcomScmModeSwitchProtocol = NULL;
 STATIC BOOLEAN BootDevImage;
@@ -923,6 +927,84 @@ GZipPkgCheck (BootParamlist *BootParamlistPtr)
 }
 
 STATIC EFI_STATUS
+RmRegisterPvmFwRegion (BootInfo *Info, BootParamlist *BootParamlistPtr)
+{
+  RmVmProtocol *RmVmProtocol = NULL;
+  RmMemAcl *PvmFwAclDesc = NULL;
+  RmMemSgl *PvmFwSglDesc = NULL;
+  UINT32 PvmFwMemHandle = 0;
+  UINT64 PvmFwLoadAddr;
+  UINT32 PvmFwSize;
+  EFI_STATUS  Status;
+
+  PvmFwLoadAddr = BootParamlistPtr->PvmFwLoadAddr;
+  PvmFwSize = BootParamlistPtr->PvmFwSize;
+
+  Status = gBS->LocateProtocol (&gEfiRmVmProtocolGuid,
+                                NULL,
+                                (VOID**)&RmVmProtocol);
+  if (Status != EFI_SUCCESS)  {
+    DEBUG ((EFI_D_ERROR, "RmVmProtocol not found: %r\n", Status));
+    return Status;
+  }
+
+  PvmFwAclDesc = AllocateZeroPool (MAX_RPC_BUFF_SIZE_BYTES);
+  if (PvmFwAclDesc == NULL) {
+    DEBUG ((EFI_D_ERROR, "Failed to allocate PvmFwAclDesc: %r\n", Status));
+    return Status;
+  }
+
+  PvmFwSglDesc = AllocateZeroPool (MAX_RPC_BUFF_SIZE_BYTES);
+  if (PvmFwSglDesc == NULL) {
+    DEBUG ((EFI_D_ERROR, "Failed to allocate PvmFwSglDesc: %r\n", Status));
+    return Status;
+  }
+
+  PvmFwAclDesc->AclEntriesCount = 1;
+  PvmFwAclDesc->AclEntries[0].Vmid = RM_VMID;
+  PvmFwAclDesc->AclEntries[0].Rights = (RM_ACL_PERM_READ|
+                                        RM_ACL_PERM_WRITE|
+                                        RM_ACL_PERM_EXEC);
+
+  PvmFwSglDesc->SglEntriesCount = 1;
+  PvmFwSglDesc->SglEntries[0].BaseAddr = PvmFwLoadAddr;
+  PvmFwSglDesc->SglEntries[0].Size = PvmFwSize;
+
+  Status = RmVmProtocol->MemDonate (RmVmProtocol,
+                                    RM_MEM_TYPE_NORMAL_MEMORY,
+                                    0,
+                                    0,
+                                    PvmFwAclDesc,
+                                    PvmFwSglDesc,
+                                    NULL,
+                                    HLOS_VMID,
+                                    RM_VMID,
+                                    &PvmFwMemHandle);
+  if (Status != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "pvmfw memory donation failed Status: %r\n", Status));
+    return Status;
+  }
+
+  Status = RmVmProtocol->FwSetVmFirmware (RmVmProtocol,
+                                    RM_VM_AUTH_ANDROID_PVM,
+                                    PvmFwMemHandle,
+                                    0,
+                                    PvmFwSize);
+  if (Status != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "SetVmFirmware failed Status: %r\n", Status));
+    return Status;
+  }
+
+  Status = RmVmProtocol->SetFwMilestone (RmVmProtocol);
+  if (Status != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "SetFwMilestone failed Status: %r\n", Status));
+    return Status;
+  }
+
+  return EFI_SUCCESS;
+}
+
+STATIC EFI_STATUS
 LoadAddrAndDTUpdate (BootInfo *Info, BootParamlist *BootParamlistPtr)
 {
   EFI_STATUS Status;
@@ -1018,6 +1100,12 @@ LoadAddrAndDTUpdate (BootInfo *Info, BootParamlist *BootParamlistPtr)
                   BOOT_IMG_MAX_PAGE_SIZE,
                   BootParamlistPtr->PvmFwSize);
     DEBUG ((EFI_D_VERBOSE, "Copied pvmfw into golden region\n"));
+
+    Status = RmRegisterPvmFwRegion (Info, BootParamlistPtr);
+    if (Status != EFI_SUCCESS) {
+      DEBUG ((EFI_D_ERROR,
+             "Failed to register pvmfw region with RM: %r\n", Status));
+    }
   }
 
   if (BootParamlistPtr->BootingWith32BitKernel) {

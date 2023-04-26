@@ -183,6 +183,7 @@
 	gEfiPartitionRecordGuid
 	gEfiRamPartitionProtocolGuid
 	gEfiResetReasonProtocolGuid
+	gEfiRmVmProtocolGuid
 	gQcomPmicPonProtocolGuid
 	gChargerExProtocolGuid
 	gEfiLimitsProtocolGuid
