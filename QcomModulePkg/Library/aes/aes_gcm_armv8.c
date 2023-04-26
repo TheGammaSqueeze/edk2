@@ -72,6 +72,12 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "flags.h"
 #include "modes.h"  // OpenSSL definitions and GCM APIs
 #include "utils.h"
+#include <Library/MemoryAllocationLib.h>
+#include <Library/DeviceInfo.h>
+#include <Library/DrawUI.h>
+#include <Library/MemoryAllocationLib.h>
+#include <Library/PartitionTableUpdate.h>
+#include <Library/ShutdownServices.h>
 
 /*===========================================================================
                  DEFINITIONS AND TYPE DECLARATIONS
@@ -86,59 +92,12 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 
-#define ARMV8_AES_MAXNR             14
-#define CIPHER_AES_BLK_SIZE         16
-
-#define CIPHER_AES_IV_SIZE          16                           /** bytes */
-#define CIPHER_MAX_IV_SIZE          60                           /** bytes */
-
-/**
- * AES Key and IV sizes
- */
-#define SW_AES128_KEY_SIZE          16
-#define SW_AES192_KEY_SIZE          24
-#define SW_AES256_KEY_SIZE          32
-#define CIPHER_MAX_KEY_SIZE         SW_AES256_KEY_SIZE
-#define CIPHER_INVALID_KEY_SIZE     0xFFFF                     /** invalid value for key size */
-
-
-#define SW_AES_IV_SIZE         CIPHER_AES_IV_SIZE
-#define SW_AES_BLOCK_BYTE_LEN  16
-#define SW_AES_MAX_IV_SIZE     60
-
-typedef struct
-{
-  uint32_t  rd_key[4 * (ARMV8_AES_MAXNR + 1)];
-  int       rounds;
-} AES_KEY;
-
-typedef struct AES_GCM_ARMV8_ctx_s
-{
-  AES_KEY key;
-  GCM128_CONTEXT *ctx;
-  uint8_t  itag[CIPHER_AES_BLK_SIZE];
-  size_t   tag_sz;
-  uint32_t xcm_flags;
-  uint32_t flags;
-  unsigned char iv[CIPHER_MAX_IV_SIZE]; /** Pointer to IV buffer   */
-  size_t   iv_sz;
-  uint8_t  c_key[CIPHER_MAX_KEY_SIZE]; /** Pointer to Cipher Key  */
-  size_t   c_keysize;                  /** Key Size in byte   */
-  SW_Cipher_Alg_Type algo;
-  SW_CipherModeType        mode; /** currently supports GCM only*/
-  SW_CipherEncryptDir dir;
-} AES_GCM_ARMV8_CTX;
-
 #if defined(__arm__) || defined(__arm) || defined(__aarch64__)
 #define UC_LOCAL_API                     __attribute__((visibility("hidden")))
 #define UC_EXPORT_API                    __attribute__((visibility("default")))
 UC_LOCAL_API int aes_v8_set_encrypt_key(const uint8_t *user_key, const int bits, AES_KEY *key);
 UC_LOCAL_API void aes_v8_encrypt(const uint8_t *in, uint8_t *out, const AES_KEY *key);
 #endif
-
-AES_GCM_ARMV8_CTX gAesGcmArmV8Ctx;
-boolean                     gInitDone = false;
-
 
 static size_t get_key_sz(SW_Cipher_Alg_Type pAlgo)
 {
@@ -152,7 +111,7 @@ static size_t get_key_sz(SW_Cipher_Alg_Type pAlgo)
   }
 }
 
-static sw_crypto_errno_enum_type initialize_gcm_ctx(AES_GCM_ARMV8_CTX *c)
+static sw_crypto_errno_enum_type initialize_gcm_ctx(AES_GCM_ARMV8_CTX *c, UINT32 index)
 {
   DEBUG ((EFI_D_VERBOSE,"start : %s:%d \n", __func__, __LINE__));
 
@@ -160,7 +119,7 @@ static sw_crypto_errno_enum_type initialize_gcm_ctx(AES_GCM_ARMV8_CTX *c)
   /* implementation is part of engine/cipher/sw/aes/asm/armv8/aes-64.S */
   aes_v8_set_encrypt_key(c->c_key, 8 * c->c_keysize, &c->key);
   DEBUG ((EFI_D_VERBOSE,"using key size %d \n", c->c_keysize));
-  UC_GUARD(NULL != (c->ctx = CRYPTO_gcm128_new(&c->key,               (block128_f) &aes_v8_encrypt)),
+  UC_GUARD(NULL != (c->ctx = CRYPTO_gcm128_new(&c->key,               (block128_f) &aes_v8_encrypt, index)),
                                    UC_E_DATA_TOO_LARGE);
   CRYPTO_gcm128_setiv(c->ctx, c->iv, c->iv_sz);
 #endif
@@ -171,7 +130,7 @@ static sw_crypto_errno_enum_type initialize_gcm_ctx(AES_GCM_ARMV8_CTX *c)
 
 sw_crypto_errno_enum_type AES_GCM_ARMV8_UpdateAAD(AES_GCM_ARMV8_CTX *c,
                                     const uint8_t *aad,
-                                    size_t aad_sz)
+                                    size_t aad_sz, UINT32 index)
 {
   // Check key and iv are both set already
   int ret;
@@ -181,7 +140,7 @@ sw_crypto_errno_enum_type AES_GCM_ARMV8_UpdateAAD(AES_GCM_ARMV8_CTX *c,
   UC_GUARD(!XCM_IS_FLAG_SET(c, XCM_FLAG_CIPHER_IN_PROGRESS), UC_E_CIPHER_INV_AAD_UPDATE);
   
   if (!XCM_IS_FLAG_SET(c, XCM_FLAG_AAD_IN_PROGRESS)) {
-   UC_GUARD(UC_E_SUCCESS == (ret = initialize_gcm_ctx(c)), ret);
+   UC_GUARD(UC_E_SUCCESS == (ret = initialize_gcm_ctx(c, index)), ret);
    XCM_SET_FLAG(c, XCM_FLAG_AAD_IN_PROGRESS);
   }
 
@@ -195,7 +154,7 @@ sw_crypto_errno_enum_type AES_GCM_ARMV8_UpdateAAD(AES_GCM_ARMV8_CTX *c,
 sw_crypto_errno_enum_type AES_GCM_ARMV8_Cipherdata(AES_GCM_ARMV8_CTX *c,
                                        const uint8_t *ibuf,
                                        size_t isz,
-                                       uint8_t *obuf)
+                                       uint8_t *obuf, UINT32 index)
 {
   int ret = -1;
   DEBUG ((EFI_D_VERBOSE,"start : %s:%d \n", __func__, __LINE__));
@@ -204,7 +163,7 @@ sw_crypto_errno_enum_type AES_GCM_ARMV8_Cipherdata(AES_GCM_ARMV8_CTX *c,
 
   if (!XCM_IS_FLAG_SET(c, XCM_FLAG_CIPHER_IN_PROGRESS)) {
     if (!XCM_IS_FLAG_SET(c, XCM_FLAG_AAD_IN_PROGRESS)) {
-      UC_GUARD(UC_E_SUCCESS == (ret = initialize_gcm_ctx(c)),
+      UC_GUARD(UC_E_SUCCESS == (ret = initialize_gcm_ctx(c, index)),
                ret);
     } else {
       XCM_CLR_FLAG(c, XCM_FLAG_AAD_IN_PROGRESS);
@@ -239,7 +198,8 @@ sw_crypto_errno_enum_type AES_GCM_ARMV8_Cipherdata(AES_GCM_ARMV8_CTX *c,
  *
  */
 sw_crypto_errno_enum_type SW_CipherData ( IovecListType    ioVecIn,
-                                          IovecListType    *ioVecOut)
+                                          IovecListType    *ioVecOut,
+                                          const GcmAesStruct *ctx)
 {
   sw_crypto_errno_enum_type ret_val = UC_E_SUCCESS;
   AES_GCM_ARMV8_CTX* pContext = NULL;
@@ -249,12 +209,12 @@ sw_crypto_errno_enum_type SW_CipherData ( IovecListType    ioVecIn,
 
   /* Sanity check inputs */
 
-  if (gInitDone != true) {
+  if (ctx->gInitDone != true) {
     DEBUG ((EFI_D_ERROR,"%s:%d Init is not Done  \n", __func__, __LINE__));
     return UC_E_INVALID_ARG;
   }
 
-  pContext = (AES_GCM_ARMV8_CTX*) (&gAesGcmArmV8Ctx);
+  pContext = (AES_GCM_ARMV8_CTX*) (&ctx->gAesGcmArmV8Ctx);
   if (((ioVecOut->size!= 1)  || (!ioVecOut->iov))
    ||((ioVecIn.size!= 1) || (!ioVecIn.iov)))
   {
@@ -273,7 +233,7 @@ sw_crypto_errno_enum_type SW_CipherData ( IovecListType    ioVecIn,
   ret_val =    AES_GCM_ARMV8_Cipherdata(pContext,
                                                  pt_ptr_in,
                                      ioVecIn.iov->dwLen,
-                                              pt_ptr_out);
+                                              pt_ptr_out, ctx->InstanceId);
   DEBUG ((EFI_D_VERBOSE,"end : %s:%d \n", __func__, __LINE__));
   return ret_val;
 }
@@ -294,7 +254,8 @@ sw_crypto_errno_enum_type SW_CipherData ( IovecListType    ioVecIn,
 
 sw_crypto_errno_enum_type SW_Cipher_GetParam ( SW_CipherParam       nParamID,
                                                void                 *pParam,
-                                               uint32               cParam )
+                                               uint32               cParam,
+                                               const GcmAesStruct *ctx )
 {
   sw_crypto_errno_enum_type ret_val = UC_E_SUCCESS;
   AES_GCM_ARMV8_CTX* pContext = NULL;
@@ -302,7 +263,7 @@ sw_crypto_errno_enum_type SW_Cipher_GetParam ( SW_CipherParam       nParamID,
    DEBUG ((EFI_D_VERBOSE,"start : %s:%d \n", __func__, __LINE__));
   /* Sanity check inputs */
 
-  if (gInitDone != true) {
+  if (ctx->gInitDone != true) {
      DEBUG ((EFI_D_ERROR,"%s:%d param ID:0x%x Init is not Done  \n", __func__, __LINE__, nParamID));
     return UC_E_INVALID_ARG;
   }
@@ -312,7 +273,7 @@ sw_crypto_errno_enum_type SW_Cipher_GetParam ( SW_CipherParam       nParamID,
     return UC_E_INVALID_ARG;
   }
 
-  pContext = (AES_GCM_ARMV8_CTX*) (&gAesGcmArmV8Ctx);
+  pContext = (AES_GCM_ARMV8_CTX*) (&ctx->gAesGcmArmV8Ctx);
   switch ( nParamID )
   {
   case SW_CIPHER_PARAM_TAG:
@@ -347,14 +308,15 @@ sw_crypto_errno_enum_type SW_Cipher_GetParam ( SW_CipherParam       nParamID,
  */
 sw_crypto_errno_enum_type SW_Cipher_SetParam ( SW_CipherParam  nParamID,
                                                const void           *pParam,
-                                               uint32               cParam )
+                                               uint32               cParam,
+                                               const GcmAesStruct *ctx)
 {
   sw_crypto_errno_enum_type ret_val = UC_E_SUCCESS;
   AES_GCM_ARMV8_CTX* pContext = NULL;
   DEBUG ((EFI_D_VERBOSE,"%s: param ID:0x%x and cParam %d\n", __func__, nParamID, cParam));
 
   /* Sanity check inputs */
-  if (gInitDone != true) {
+  if (ctx->gInitDone != true) {
      DEBUG ((EFI_D_ERROR,"%s:%d param ID:0x%x Init is not Done  \n", __func__, __LINE__, nParamID));
     return UC_E_INVALID_ARG;
   }
@@ -364,7 +326,7 @@ sw_crypto_errno_enum_type SW_Cipher_SetParam ( SW_CipherParam  nParamID,
     return UC_E_INVALID_ARG;
   }
 
-  pContext = (AES_GCM_ARMV8_CTX*) (&gAesGcmArmV8Ctx);
+  pContext = (AES_GCM_ARMV8_CTX*) (&ctx->gAesGcmArmV8Ctx);
 
   switch ( nParamID )
   {
@@ -433,7 +395,7 @@ sw_crypto_errno_enum_type SW_Cipher_SetParam ( SW_CipherParam  nParamID,
          DEBUG ((EFI_D_ERROR,"%s:%d param ID:0x%x UC_E_INVALID_ARG \n", __func__, __LINE__, nParamID));
          return UC_E_INVALID_ARG;
       }
-      ret_val = AES_GCM_ARMV8_UpdateAAD(pContext, (uint8*)pParam, cParam);
+      ret_val = AES_GCM_ARMV8_UpdateAAD(pContext, (uint8*)pParam, cParam, ctx->InstanceId);
       break;
 
     case SW_CIPHER_PARAM_TAG:
@@ -465,11 +427,11 @@ sw_crypto_errno_enum_type SW_Cipher_SetParam ( SW_CipherParam  nParamID,
  *
  */
 
-sw_crypto_errno_enum_type SW_Cipher_DeInit()
+sw_crypto_errno_enum_type SW_Cipher_DeInit(GcmAesStruct *ctx)
 {
   DEBUG ((EFI_D_VERBOSE,"start : %s:%d \n", __func__, __LINE__));
-  ENV_sec_memzero(&gAesGcmArmV8Ctx, sizeof(AES_GCM_ARMV8_CTX));
-  gInitDone = false;
+  ENV_sec_memzero(&ctx->gAesGcmArmV8Ctx, sizeof(AES_GCM_ARMV8_CTX));
+  ctx->gInitDone = false;
   DEBUG ((EFI_D_VERBOSE,"end : %s:%d \n", __func__, __LINE__));
   return UC_E_SUCCESS;
 }
@@ -484,7 +446,7 @@ sw_crypto_errno_enum_type SW_Cipher_DeInit()
  * @see
  *
  */
-sw_crypto_errno_enum_type SW_Cipher_Init(SW_Cipher_Alg_Type pAlgo)
+sw_crypto_errno_enum_type SW_Cipher_Init(SW_Cipher_Alg_Type pAlgo, GcmAesStruct *ctx)
 {
   sw_crypto_errno_enum_type ret_val = UC_E_SUCCESS;
 
@@ -496,11 +458,10 @@ sw_crypto_errno_enum_type SW_Cipher_Init(SW_Cipher_Alg_Type pAlgo)
      return UC_E_NOT_SUPPORTED;
   }
 
-  ENV_sec_memzero(&gAesGcmArmV8Ctx, sizeof(AES_GCM_ARMV8_CTX));
-
-  gAesGcmArmV8Ctx.c_keysize = get_key_sz(pAlgo);
-  gAesGcmArmV8Ctx.algo      = (SW_Cipher_Alg_Type) pAlgo;
-  gInitDone                 = true;
+  ENV_sec_memzero(&ctx->gAesGcmArmV8Ctx, sizeof(AES_GCM_ARMV8_CTX));
+  ctx->gAesGcmArmV8Ctx.c_keysize = get_key_sz(pAlgo);
+  ctx->gAesGcmArmV8Ctx.algo      = (SW_Cipher_Alg_Type) pAlgo;
+  ctx->gInitDone                 = true;
   DEBUG ((EFI_D_VERBOSE,"end : %s:%d \n", __func__, __LINE__));
   return ret_val;
 }
