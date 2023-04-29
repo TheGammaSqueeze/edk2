@@ -42,6 +42,8 @@ def _abl_impl(ctx):
           cp "${ABL_DEBUG_FILE}" "${ABL_IMAGE_DIR}/LinuxLoader_${TARGET_BUILD_VARIANT}.debug"
           cp "${ABL_OUT_DIR}/unsigned_abl.elf" "${ABL_IMAGE_DIR}/unsigned_abl_${TARGET_BUILD_VARIANT}.elf"
         fi
+
+        find "${ABL_OUT_DIR}" -type d -name "abl-${TARGET_BUILD_VARIANT}" -exec cp -ar {} "$ABL_IMAGE_DIR" \\;
       }
     """
     for snippet in ctx.attr.extra_function_snippets:
@@ -89,7 +91,7 @@ def _abl_impl(ctx):
       # Copy to bazel output dir
       abs_out_dir="${{PWD}}/{abl_out_dir}"
       mkdir -p "${{abs_out_dir}}"
-      cd "${{ABL_IMAGE_DIR}}" && tar -czf "${{abs_out_dir}}/{abl_out_name}" ./*.elf
+      cd "${{ABL_IMAGE_DIR}}" && tar -czf "${{abs_out_dir}}/{abl_out_name}" ./*.elf ./abl-${{TARGET_BUILD_VARIANT}}
       """.format(
         abl_out_dir = output_files[0].dirname,
         abl_out_name = output_files[0].basename,
