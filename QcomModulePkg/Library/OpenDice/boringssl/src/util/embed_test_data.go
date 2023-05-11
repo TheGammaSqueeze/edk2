@@ -111,8 +111,6 @@ func main() {
 	fmt.Printf(`
 /* clang-format off */
 
-#include <stdlib.h>
-#include <string.h>
 
 #include <algorithm>
 #include <string>

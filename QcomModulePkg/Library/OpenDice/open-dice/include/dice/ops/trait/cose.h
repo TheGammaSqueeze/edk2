@@ -17,8 +17,6 @@
 
 #include <dice/config.h>
 #include <dice/dice.h>
-#include <stddef.h>
-#include <stdint.h>
 
 // These functions may optionally be implemented by a COSE based integration.
 // They aren't directly depended on by the main DICE functions but provide

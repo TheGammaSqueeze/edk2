@@ -65,6 +65,7 @@
 
 [LibraryClasses.AARCH64]
 	AesLib
+	OpenDice
 
 [Guids]
 	gEfiFileInfoGuid

@@ -15,7 +15,6 @@
 #ifndef OPENSSL_HEADER_AES_INTERNAL_H
 #define OPENSSL_HEADER_AES_INTERNAL_H
 
-#include <stdlib.h>
 
 #include "../../internal.h"
 

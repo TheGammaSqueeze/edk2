@@ -16,7 +16,6 @@
 #define OPENSSL_HEADER_TOOL_TRANSPORT_COMMON_H
 
 #include <openssl/ssl.h>
-#include <string.h>
 
 #include <string>
 

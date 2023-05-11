@@ -15,7 +15,6 @@
 #ifndef HEADER_SSL_TEST_FUZZER_TAGS
 #define HEADER_SSL_TEST_FUZZER_TAGS
 
-#include <stdint.h>
 
 
 // SSL fuzzer tag constants.

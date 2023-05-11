@@ -57,7 +57,6 @@
 #ifndef OPENSSL_HEADER_THREAD_H
 #define OPENSSL_HEADER_THREAD_H
 
-#include <sys/types.h>
 
 #include <openssl/base.h>
 

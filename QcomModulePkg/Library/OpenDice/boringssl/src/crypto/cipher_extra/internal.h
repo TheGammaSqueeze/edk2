@@ -57,8 +57,6 @@
 #ifndef OPENSSL_HEADER_CIPHER_EXTRA_INTERNAL_H
 #define OPENSSL_HEADER_CIPHER_EXTRA_INTERNAL_H
 
-#include <assert.h>
-#include <stdlib.h>
 
 #include <openssl/base.h>
 

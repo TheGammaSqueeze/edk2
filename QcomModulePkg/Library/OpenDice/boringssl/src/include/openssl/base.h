@@ -50,19 +50,20 @@
  * (eay@cryptsoft.com).  This product includes software written by Tim
  * Hudson (tjh@cryptsoft.com). */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef OPENSSL_HEADER_BASE_H
 #define OPENSSL_HEADER_BASE_H
 
 
 // This file should be the first included by all BoringSSL headers.
 
-#include <stddef.h>
-#include <stdint.h>
-#include <sys/types.h>
-
 #if defined(__MINGW32__)
 // stdio.h is needed on MinGW for __MINGW_PRINTF_FORMAT.
-#include <stdio.h>
 #endif
 
 #if defined(__APPLE__)
@@ -179,6 +180,11 @@ extern "C" {
 // which break such unsupported configurations will not be reverted.
 #if !defined(OPENSSL_NO_THREADS_CORRUPT_MEMORY_AND_LEAK_SECRETS_IF_THREADED)
 #define OPENSSL_THREADS
+#endif
+
+#ifdef PVMFW_BCC
+#undef OPENSSL_THREADS
+#define OPENSSL_NO_ASM
 #endif
 
 #define OPENSSL_IS_BORINGSSL

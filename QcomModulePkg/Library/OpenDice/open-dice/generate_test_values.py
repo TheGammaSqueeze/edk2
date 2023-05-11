@@ -60,8 +60,7 @@ _FILE_HEADER = textwrap.dedent("""\
     #ifndef DICE_KNOWN_TEST_VALUES_H_
     #define DICE_KNOWN_TEST_VALUES_H_
 
-    #include <stdint.h>
-
+    
     namespace dice {
     namespace test {
 

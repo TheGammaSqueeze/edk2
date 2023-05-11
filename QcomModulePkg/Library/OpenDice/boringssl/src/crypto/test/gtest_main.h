@@ -15,8 +15,6 @@
 #ifndef OPENSSL_HEADER_CRYPTO_TEST_GTEST_MAIN_H
 #define OPENSSL_HEADER_CRYPTO_TEST_GTEST_MAIN_H
 
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <gtest/gtest.h>
 

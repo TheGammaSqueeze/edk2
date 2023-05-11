@@ -271,7 +271,6 @@ func main() {
 #include <openssl/base.h>
 #include <openssl/err.h>
 
-#include <assert.h>
 
 `)
 

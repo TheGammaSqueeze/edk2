@@ -106,6 +106,12 @@
  * (eay@cryptsoft.com).  This product includes software written by Tim
  * Hudson (tjh@cryptsoft.com). */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef OPENSSL_HEADER_CRYPTO_INTERNAL_H
 #define OPENSSL_HEADER_CRYPTO_INTERNAL_H
 
@@ -114,20 +120,16 @@
 #include <openssl/stack.h>
 #include <openssl/thread.h>
 
-#include <assert.h>
-#include <string.h>
 
 #if defined(BORINGSSL_CONSTANT_TIME_VALIDATION)
 #include <valgrind/memcheck.h>
 #endif
 
 #if defined(BORINGSSL_FIPS_BREAK_TESTS)
-#include <stdlib.h>
 #endif
 
 #if !defined(__cplusplus)
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-#include <stdalign.h>
 #elif defined(_MSC_VER) && !defined(__clang__)
 #define alignas(x) __declspec(align(x))
 #define alignof __alignof
@@ -164,6 +166,7 @@ OPENSSL_MSVC_PRAGMA(warning(pop))
 extern "C" {
 #endif
 
+#include "../../opendice-util.h"
 
 #if defined(OPENSSL_X86) || defined(OPENSSL_X86_64) || defined(OPENSSL_ARM) || \
     defined(OPENSSL_AARCH64)
@@ -782,7 +785,6 @@ static inline uint64_t CRYPTO_bswap8(uint64_t x) {
 }
 #elif defined(_MSC_VER)
 OPENSSL_MSVC_PRAGMA(warning(push, 3))
-#include <stdlib.h>
 OPENSSL_MSVC_PRAGMA(warning(pop))
 #pragma intrinsic(_byteswap_uint64, _byteswap_ulong, _byteswap_ushort)
 static inline uint16_t CRYPTO_bswap2(uint16_t x) {

@@ -51,7 +51,6 @@
 
 #include <openssl/base.h>
 
-#include <assert.h>
 
 #include "../../internal.h"
 

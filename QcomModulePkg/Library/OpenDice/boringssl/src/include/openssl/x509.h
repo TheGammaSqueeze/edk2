@@ -80,7 +80,6 @@
 #include <openssl/sha.h>
 #include <openssl/stack.h>
 #include <openssl/thread.h>
-#include <time.h>
 
 #if defined(__cplusplus)
 extern "C" {
