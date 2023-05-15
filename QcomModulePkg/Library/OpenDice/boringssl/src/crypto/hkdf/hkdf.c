@@ -12,10 +12,14 @@
  * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. */
 
-#include <openssl/hkdf.h>
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+#include "../../../../opendice-util.h"
 
-#include <assert.h>
-#include <string.h>
+#include <openssl/hkdf.h>
 
 #include <openssl/err.h>
 #include <openssl/hmac.h>

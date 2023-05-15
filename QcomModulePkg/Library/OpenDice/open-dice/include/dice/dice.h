@@ -15,9 +15,6 @@
 #ifndef DICE_DICE_H_
 #define DICE_DICE_H_
 
-#include <stddef.h>
-#include <stdint.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif

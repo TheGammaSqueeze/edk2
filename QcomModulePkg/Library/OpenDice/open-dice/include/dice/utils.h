@@ -15,8 +15,6 @@
 #ifndef DICE_UTILS_H_
 #define DICE_UTILS_H_
 
-#include <stddef.h>
-#include <stdint.h>
 
 #include "dice/dice.h"
 

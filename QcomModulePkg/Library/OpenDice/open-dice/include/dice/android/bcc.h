@@ -15,8 +15,6 @@
 #ifndef DICE_ANDROID_BCC_H_
 #define DICE_ANDROID_BCC_H_
 
-#include <stdbool.h>
-
 #include "dice/dice.h"
 
 #ifdef __cplusplus

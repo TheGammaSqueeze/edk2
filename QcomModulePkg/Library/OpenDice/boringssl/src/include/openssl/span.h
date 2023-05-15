@@ -21,7 +21,6 @@
 
 extern "C++" {
 
-#include <stdlib.h>
 
 #include <algorithm>
 #include <type_traits>

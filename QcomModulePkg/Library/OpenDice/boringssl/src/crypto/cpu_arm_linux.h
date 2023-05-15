@@ -17,7 +17,6 @@
 
 #include <openssl/base.h>
 
-#include <string.h>
 
 #include "internal.h"
 

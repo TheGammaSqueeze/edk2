@@ -2036,9 +2036,10 @@ LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume,
   UINT32 RecoveryHdrSz = 0;
   VOID *InitBootHdr = NULL;
   UINT32 InitBootHdrSz = 0;
+#ifdef PVMFW_BCC
   VOID *PvmFwHdr = NULL;
   UINT32 PvmFwHdrSz = 0;
-
+#endif
   WaitForFlashFinished ();
 
   if (Info == NULL) {
@@ -2094,7 +2095,9 @@ LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume,
   }
 
   Info->HasPvmFw = false;
+  Info->PvmFwRawSize = 0;
 
+#ifdef PVMFW_BCC
   /* Check for pvmfw partition */
   Status = LoadPartitionImageHeader (Info, (CHAR16 *)L"pvmfw",
            &PvmFwHdr, &PvmFwHdrSz);
@@ -2103,6 +2106,7 @@ LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume,
     if (PvmFwHdrSz &&
         ((boot_img_hdr *)(PvmFwHdr))->kernel_size != 0) {
       Info->HasPvmFw = true;
+      Info->PvmFwRawSize = ((boot_img_hdr *)(PvmFwHdr))->kernel_size;
       DEBUG ((EFI_D_VERBOSE, "Valid pvmfw found\n"));
     } else {
       DEBUG ((EFI_D_ERROR,
@@ -2111,6 +2115,7 @@ LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume,
   } else {
     DEBUG ((EFI_D_VERBOSE, "No pvmfw partition found.\n"));
   }
+#endif
 
 get_ptn_name:
   /* Get Partition Name*/

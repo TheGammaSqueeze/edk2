@@ -15,10 +15,6 @@
 #ifndef DICE_CBOR_WRITER_H_
 #define DICE_CBOR_WRITER_H_
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif

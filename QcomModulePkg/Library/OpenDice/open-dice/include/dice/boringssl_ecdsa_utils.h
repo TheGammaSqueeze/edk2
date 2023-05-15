@@ -15,8 +15,6 @@
 #ifndef BORINGSSL_ECDSA_UTILS_H_
 #define BORINGSSL_ECDSA_UTILS_H_
 
-#include <stddef.h>
-#include <stdint.h>
 
 #include "dice/dice.h"
 

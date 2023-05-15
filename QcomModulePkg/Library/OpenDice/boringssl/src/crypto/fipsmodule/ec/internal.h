@@ -70,7 +70,6 @@
 
 #include <openssl/base.h>
 
-#include <assert.h>
 
 #include <openssl/bn.h>
 #include <openssl/ec.h>

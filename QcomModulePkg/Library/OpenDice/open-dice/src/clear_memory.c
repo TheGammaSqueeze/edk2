@@ -12,6 +12,13 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+#include "../../opendice-util.h"
+
 // This is a basic, standalone implementation of DiceClearMemory that aims to
 // write zeros to the memory without the compiler optimizing it away by using a
 // volatile data pointer. Attention has not been given to performance, clearing

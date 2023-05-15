@@ -12,10 +12,15 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+#include "../../opendice-util.h"
+
 // An implementation of the hash and kdf crypto operations using boringssl. The
 // algorithms used are SHA512 and HKDF-SHA512.
-
-#include <stdint.h>
 
 #include "dice/dice.h"
 #include "dice/ops.h"

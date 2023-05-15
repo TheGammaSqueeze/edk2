@@ -144,7 +144,6 @@
 
 #include <openssl/base.h>
 
-#include <stdlib.h>
 
 #include <initializer_list>
 #include <limits>

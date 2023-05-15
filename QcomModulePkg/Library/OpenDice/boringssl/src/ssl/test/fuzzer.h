@@ -15,9 +15,6 @@
 #ifndef HEADER_SSL_TEST_FUZZER
 #define HEADER_SSL_TEST_FUZZER
 
-#include <assert.h>
-#include <stdlib.h>
-#include <string.h>
 
 #include <algorithm>
 #include <vector>

@@ -106,10 +106,15 @@
  * (eay@cryptsoft.com).  This product includes software written by Tim
  * Hudson (tjh@cryptsoft.com). */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef OPENSSL_HEADER_ERR_H
 #define OPENSSL_HEADER_ERR_H
 
-#include <stdio.h>
 
 #include <openssl/base.h>
 
@@ -437,8 +442,13 @@ OPENSSL_EXPORT void ERR_clear_system_error(void);
 
 // OPENSSL_PUT_ERROR is used by OpenSSL code to add an error to the error
 // queue.
+//FIXME: Disable this for now. But catch this error properly for ABL.
+#ifdef PVMFW_BCC
+#define OPENSSL_PUT_ERROR(library, reason)
+#else
 #define OPENSSL_PUT_ERROR(library, reason) \
   ERR_put_error(ERR_LIB_##library, 0, reason, __FILE__, __LINE__)
+#endif
 
 // OPENSSL_PUT_SYSTEM_ERROR is used by OpenSSL code to add an error from the
 // operating system to the error queue.

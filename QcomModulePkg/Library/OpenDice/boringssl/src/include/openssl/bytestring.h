@@ -18,7 +18,6 @@
 #include <openssl/base.h>
 
 #include <openssl/span.h>
-#include <time.h>
 
 #if defined(__cplusplus)
 extern "C" {

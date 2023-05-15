@@ -17,7 +17,6 @@
 /*   twos_complement_eval z = let x1 := z[0] + (z[1] << 64) + (z[2] << 128) + (z[3] << 192) in */
 /*                            if x1 & (2^256-1) < 2^255 then x1 & (2^256-1) else (x1 & (2^256-1)) - 2^256 */
 
-#include <stdint.h>
 typedef unsigned char fiat_p256_uint1;
 typedef signed char fiat_p256_int1;
 #if defined(__GNUC__) || defined(__clang__)

@@ -17,7 +17,6 @@
 
 #include <openssl/base.h>
 
-#include <stdint.h>
 
 OPENSSL_MSVC_PRAGMA(warning(push))
 OPENSSL_MSVC_PRAGMA(warning(disable : 4702))
