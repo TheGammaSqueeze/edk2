@@ -8,6 +8,7 @@ TARGET_BOARD_TYPE_AUTO=0
 BUILD_USES_RECOVERY_AS_BOOT=0
 DISABLE_PARALLEL_DOWNLOAD_FLASH=0
 PVMFW_ENABLED=1
+PVMFW_DUMMY_BCC_ENABLED=1
 
 ################################################################################
 . ${ROOT_DIR}/${ABL_SRC}/QcomModulePkg/build.config.msm.common

@@ -67,7 +67,11 @@ static BccRoot_t     BccRoot;
 /* Function that returns BCC artifacts in the handover format.*/
 DiceResult GetBccArtifacts (UINT8    *FinalEncodedBccArtifacts,
                             size_t    BccArtifactsBufferSize,
-                            size_t   *BccArtifactsValidSize)
+                            size_t   *BccArtifactsValidSize
+#ifndef USE_DUMMY_BCC
+                            , BccParams_t    BccParamsRecvdFromAVB
+#endif
+)
 {
     UINT8 UDSPrivateKeySeed[DICE_PRIVATE_KEY_SEED_SIZE] = {0};
     UINT8 UDSPrivateKey[DICE_PRIVATE_KEY_SIZE] = {0};
@@ -80,11 +84,13 @@ DiceResult GetBccArtifacts (UINT8    *FinalEncodedBccArtifacts,
     struct  CborOut Out;
     DiceResult Result;
 
+#ifdef USE_DUMMY_BCC
     // Fill some hard code values here for now. AVB team has to provide
     // the real values.
     BccParams_t     BccParamsRecvdFromAVB = {{0}};
     memcpy ((void *)BccParamsRecvdFromAVB.ChildImage.componentName,
                                                                   "pvmfw", 5);
+#endif
 
     assert (FinalEncodedBccArtifacts);
     assert (BccArtifactsValidSize);

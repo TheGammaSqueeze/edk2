@@ -111,5 +111,9 @@ typedef struct BccParams
   */
 DiceResult GetBccArtifacts (UINT8   *FinalEncodedBccArtifacts,
                            size_t   BccArtifactsBufferSize,
-                           size_t  *BccArtifactsValidSize);
+                           size_t  *BccArtifactsValidSize
+#ifndef USE_DUMMY_BCC
+                           , BccParams_t BccParamsRecvdFromAVB
+#endif
+);
 #endif

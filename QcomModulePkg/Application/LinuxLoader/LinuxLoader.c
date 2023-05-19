@@ -383,7 +383,11 @@ flashless_boot:
   #if HIBERNATION_SUPPORT_NO_AES
     BootIntoHibernationImage (&Info, &SetRotAndBootState);
   #endif
-    Status = LoadImageAndAuth (&Info, FALSE, SetRotAndBootState);
+    Status = LoadImageAndAuth (&Info, FALSE, SetRotAndBootState
+  #ifndef USE_DUMMY_BCC
+                               , &BccParamsRecvdFromAVB
+  #endif
+                              );
     if (Status != EFI_SUCCESS) {
       DEBUG ((EFI_D_ERROR, "LoadImageAndAuth failed: %r\n", Status));
       goto fastboot;

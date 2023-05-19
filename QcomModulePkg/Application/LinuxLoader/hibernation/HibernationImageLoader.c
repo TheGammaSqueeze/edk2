@@ -1464,7 +1464,11 @@ VOID BootIntoHibernationImage (BootInfo *Info, BOOLEAN *SetRotAndBootState)
                 goto err;
         }
 
-        Status = LoadImageAndAuth (Info, TRUE, FALSE);
+        Status = LoadImageAndAuth (Info, TRUE, FALSE
+#ifndef USE_DUMMY_BCC
+                                   , &BccParamsRecvdFromAVB
+#endif
+                                  );
         if (Status != EFI_SUCCESS) {
                 printf ("Failed to set ROT and Bootstate : %r\n", Status);
                 goto err;

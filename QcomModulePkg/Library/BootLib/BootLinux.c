@@ -1051,7 +1051,11 @@ AppendPvmFwConfig (BootInfo *Info, BootParamlist *BootParamlistPtr) {
   /* Generate BCC handover data*/
   Ret = GetBccArtifacts (FinalEncodedBccArtifacts,
                        BCC_ARTIFACTS_WITH_BCC_TOTAL_SIZE,
-                       &BccArtifactsValidSize);
+                       &BccArtifactsValidSize
+#ifndef USE_DUMMY_BCC
+                      , BccParamsRecvdFromAVB
+#endif
+        );
   if (Ret != 0) {
     DEBUG ((EFI_D_ERROR, "BCC handover data generation failed\n"));
     return EFI_FAILURE;

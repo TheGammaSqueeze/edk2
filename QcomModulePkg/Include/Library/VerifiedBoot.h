@@ -73,6 +73,7 @@ typedef enum {
 
 /* forward declare BootInfo */
 typedef struct BootInfo BootInfo;
+extern BccParams_t BccParamsRecvdFromAVB;
 
 BOOLEAN
 VerifiedBootEnbled ();
@@ -102,11 +103,18 @@ GetAVBVersion ();
  * default and TRUE incase of ROT and
  * BootState already set
  *
+ * @param[in] BccParamsRecvdFromAVB
+ * It will contain populated BCC parameters
+ *
  * @return EFI_STATUS
  */
 EFI_STATUS
 LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume,
-        BOOLEAN SetRotAndBootState);
+                  BOOLEAN SetRotAndBootState
+#ifndef USE_DUMMY_BCC
+                  , BccParams_t *BccParamsRecvdFromAVB
+#endif
+                 );
 
 /**
  *  Free resources/memory allocated by
