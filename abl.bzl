@@ -14,7 +14,9 @@ def _abl_impl(ctx):
     inputs = []
     inputs += ctx.files.srcs
     inputs += ctx.files.deps
-    inputs += ctx.attr.kernel_build[KernelEnvInfo].dependencies
+    transitive_inputs = [ctx.attr.kernel_build[KernelEnvInfo].inputs]
+    tools = ctx.attr.kernel_build[KernelEnvInfo].tools
+
 
     output_files = [ctx.actions.declare_file("{}.tar.gz".format(ctx.label.name))]
 
@@ -100,8 +102,9 @@ def _abl_impl(ctx):
 
     ctx.actions.run_shell(
         mnemonic = "Abl",
-        inputs = inputs,
+        inputs = depset(inputs, transitive = transitive_inputs),
         outputs = output_files,
+        tools = tools,
         command = command,
         progress_message = "Building {}".format(ctx.label),
     )
