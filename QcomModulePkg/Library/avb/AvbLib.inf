@@ -74,6 +74,7 @@
    VerifiedBoot.c
    KeymasterClient.c
    Hash2Client.c
+   AvbPopulateBccParams.c
 
 [Packages]
 	ArmPkg/ArmPkg.dec

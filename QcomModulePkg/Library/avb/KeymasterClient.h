@@ -131,4 +131,7 @@ KeyMasterGetDateSupport (BOOLEAN *Supported);
 EFI_STATUS
 KeyMasterFbeSetSeed (VOID);
 
+EFI_STATUS
+KeyMasterGetFRSAndUDS (BccParams_t *bcc_params);
+
 #endif /* __KEYMASTER_CLIENT_H__ */
