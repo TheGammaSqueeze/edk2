@@ -181,10 +181,16 @@ def define_abl(msm_target, variant):
     else:
         extra_deps = []
 
+    abl_build_config = "build.config.msm.{}".format(msm_target.replace("-", "."))
+    # Use "{}.lxc" config if its a non-GKI target/variant combination
+    if msm_target == "gen4auto":
+        if variant == "perf-defconfig" or variant == "debug-defconfig":
+            abl_build_config = "{}.lxc".format(abl_build_config)
+
     abl(
         name = "{}_abl".format(target),
         kernel_build = "//msm-kernel:{}_env".format(target),
-        abl_build_config = "build.config.msm.{}".format(msm_target.replace("-", ".")),
+        abl_build_config = abl_build_config,
         srcs = native.glob(["**"]) + extra_srcs,
         extra_function_snippets = extra_function_snippets,
         extra_post_gen_snippets = extra_post_gen_snippets,
