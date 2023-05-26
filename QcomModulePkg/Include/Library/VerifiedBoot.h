@@ -30,6 +30,7 @@
 #define __VERIFIEDBOOT_H__
 
 #include <Uefi.h>
+#include <Library/QcBcc.h>
 
 enum
 {

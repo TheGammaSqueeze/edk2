@@ -92,6 +92,7 @@
 VOID BootIntoHibernationImage (BootInfo *Info, BOOLEAN *SetRotAndBootState);
 #endif
 
+BccParams_t BccParamsRecvdFromAVB = {{0}};
 STATIC BOOLEAN BootReasonAlarm = FALSE;
 STATIC BOOLEAN BootIntoFastboot = FALSE;
 STATIC BOOLEAN BootIntoRecovery = FALSE;

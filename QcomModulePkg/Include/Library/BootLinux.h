@@ -273,6 +273,7 @@ typedef struct {
   PvmFwConfigEntry Entries[PVMFW_CONFIG_MAX_BLOBS];
 } PvmFwConfigHeader;
 
+extern BccParams_t BccParamsRecvdFromAVB;
 extern RamPartitionEntry UpdatedRamPartitions[NUM_NOMAP_REGIONS];
 extern UINT32 NumUpdPartitions;
 extern BOOLEAN UpdRamPartitionsAvail;

@@ -84,7 +84,6 @@
 #include "UpdateDeviceTree.h"
 #include "libfdt.h"
 #include "Bootconfig.h"
-#include "QcBcc.h"
 #include <ufdt_overlay.h>
 
 #ifndef DISABLE_KERNEL_PROTOCOL
@@ -1041,7 +1040,8 @@ AppendPvmFwConfig (BootInfo *Info, BootParamlist *BootParamlistPtr) {
   //TODO: Ensure there is enough room to append config data.
 
   /* Allocate BCC artifacts buffer */
-  FinalEncodedBccArtifacts = AllocateZeroPool (BCC_ARTIFACTS_MAX_SIZE);
+  FinalEncodedBccArtifacts =
+                         AllocateZeroPool (BCC_ARTIFACTS_WITH_BCC_TOTAL_SIZE);
   if (!FinalEncodedBccArtifacts) {
     DEBUG ((EFI_D_ERROR,
             ": Failed to allocate memory for BCC artifacts\n"));
@@ -1050,7 +1050,7 @@ AppendPvmFwConfig (BootInfo *Info, BootParamlist *BootParamlistPtr) {
 
   /* Generate BCC handover data*/
   Ret = GetBccArtifacts (FinalEncodedBccArtifacts,
-                       BCC_ARTIFACTS_MAX_SIZE,
+                       BCC_ARTIFACTS_WITH_BCC_TOTAL_SIZE,
                        &BccArtifactsValidSize);
   if (Ret != 0) {
     DEBUG ((EFI_D_ERROR, "BCC handover data generation failed\n"));
