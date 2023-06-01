@@ -177,7 +177,7 @@ def define_abl(msm_target, variant):
         return
 
     if msm_target == "pineapple" or msm_target == "pineapple-allyes" or msm_target == "gen3auto" or msm_target == "gen4auto" or msm_target == "blair" or msm_target == "sdmsteppeauto":
-        extra_deps = ["//prebuilts/clang/host/linux-x86/clang-r458507:binaries"]
+        extra_deps = ["//prebuilts/clang/host/linux-x86/clang-r450784e:binaries"]
     else:
         extra_deps = []
 
