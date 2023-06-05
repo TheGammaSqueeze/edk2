@@ -642,6 +642,7 @@ GetMemoryLimit (VOID *fdt, CHAR8 *MemOffAmt)
   INT32 MemOfflineOffset;
   UINT64 *MemTable;
   INT32 PropLen;
+  CONST CHAR8 *status = NULL;
   EFI_STATUS Status;
   UINT64 UpdRamPartitionSize = 0;
 
@@ -664,6 +665,10 @@ GetMemoryLimit (VOID *fdt, CHAR8 *MemOffAmt)
 
   MemLimit = DdrSize;
   MemOfflineOffset = FdtPathOffset (fdt, "/mem-offline");
+  status = fdt_getprop (fdt, MemOfflineOffset, "status", &PropLen);
+  if (status &&
+      (AsciiStrnCmp (status, "disabled", PropLen) == 0))
+    goto Unsupported;
 
   if (DdrSize < MEM_OFF_MIN ||
       MemOfflineOffset < 0) {
