@@ -28,9 +28,9 @@
 */
 
 /*
- *  Changes from Qualcomm Innovation Center are provided under the following license:
+ * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- *  Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -502,7 +502,7 @@ BoardPmicTarget (UINT32 PmicDeviceIndex)
     ASSERT (0);
   }
 
-  if (Revision <= PMIC_EXT_VERSION) {
+  if (Revision == PMIC_EXT_VERSION) {
     Status = GetPmicInfoExt (PmicDeviceIndex, &pmic_info_ext);
     if (Status != EFI_SUCCESS) {
       DEBUG ((EFI_D_VERBOSE, "Error finding board pmic info: %r\n", Status));
