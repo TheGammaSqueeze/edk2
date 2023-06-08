@@ -129,6 +129,7 @@ typedef enum {
   KEYMASTER_SET_VBH = (KEYMASTER_UTILS_CMD_ID + 17UL),
   KEYMASTER_GET_DATE_SUPPORT = (KEYMASTER_UTILS_CMD_ID + 21UL),
   KEYMASTER_FBE_SET_SEED = (KEYMASTER_UTILS_CMD_ID + 24UL),
+  KEYMINT_GENERATE_FRS_AND_UDS = (KEYMASTER_UTILS_CMD_ID + 25UL),
 
   KEYMASTER_LAST_CMD_ENTRY = (int)0xFFFFFFFFULL
 } KeyMasterCmd;
@@ -177,6 +178,18 @@ typedef struct {
 typedef struct {
   INT32 Status;
 } __attribute__ ((packed)) KMFbeSetSeedRsp;
+
+typedef struct {
+  UINT32 CmdId;
+} __attribute__ ((packed)) KMGetFRSUDSReq;
+
+typedef struct {
+  INT32 Status;
+  UINT32 FrsLen;
+  UINT32 UdsLen;
+  uint8_t Frs[DICE_HIDDEN_SIZE];/*Factory reset Secret */
+  uint8_t Uds[DICE_CDI_SIZE];/*Unique Device Secret*/
+} __attribute__ ((packed)) KMGetFRSUDSRsp;
 
 STATIC EFI_STATUS ShareKeyMintInfoWithSPU (VOID);
 
@@ -530,5 +543,49 @@ STATIC EFI_STATUS ShareKeyMintInfoWithSPU (VOID)
   // Clear data from memory
   SetMem ( (VOID*) (&SPUKeymintSharedInfo), sizeof (SPUKeymintSharedInfo), 0);
 
+  return Status;
+}
+
+/* KeyMasterGetFRSAndUDS will fetch Unique Device Secret(UDS) and
+ * Factory Reset Sequence(FRS) from Keymint.
+ */
+EFI_STATUS KeyMasterGetFRSAndUDS (BccParams_t *bcc_params)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+  KMGetFRSUDSReq FRSUDSReq = {0};
+  KMGetFRSUDSRsp FRSUDSRsp = {0};
+
+  GUARD (KeyMasterStartApp (&Handle));
+  FRSUDSReq.CmdId = KEYMINT_GENERATE_FRS_AND_UDS;
+
+  Status = Handle.QseeComProtocol->QseecomSendCmd (
+           Handle.QseeComProtocol, Handle.AppId, (UINT8 *)&FRSUDSReq,
+           sizeof (FRSUDSReq), (UINT8 *)&FRSUDSRsp, sizeof (FRSUDSRsp));
+  if (Status != EFI_SUCCESS ||
+      FRSUDSRsp.Status != 0) {
+      DEBUG ((EFI_D_ERROR, "KeyMasterGetFRSAndUDS: Get FRSAndUDS err, "
+              "Status: %r, response status: %d\n",
+              Status, FRSUDSRsp.Status));
+      Status = EFI_LOAD_ERROR;
+      goto out;
+  }
+
+  if (FRSUDSRsp.FrsLen != DICE_HIDDEN_SIZE &&
+      FRSUDSRsp.UdsLen != DICE_CDI_SIZE) {
+      DEBUG ((EFI_D_ERROR, "KeyMasterGetFRSAndUDS: Invalid Length Received:"
+              " FrsLen=%d UdsLen=%d\n", FRSUDSRsp.FrsLen, FRSUDSRsp.UdsLen));
+      Status = EFI_LOAD_ERROR;
+      goto out;
+  }
+  if (!FRSUDSRsp.Frs &&
+      !FRSUDSRsp.Uds) {
+      DEBUG ((EFI_D_ERROR, "KeyMasterGetFRSAndUDS: Response not received\n"));
+      Status = EFI_LOAD_ERROR;
+      goto out;
+  }
+  CopyMem (bcc_params->FRS, FRSUDSRsp.Frs, FRSUDSRsp.FrsLen);
+  CopyMem (bcc_params->UDS, FRSUDSRsp.Uds, FRSUDSRsp.UdsLen);
+
+out:
   return Status;
 }

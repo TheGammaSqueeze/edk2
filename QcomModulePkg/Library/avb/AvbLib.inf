@@ -49,6 +49,7 @@
 [BuildOptions.AARCH64]
   GCC:*_*_*_CC_FLAGS = $(SDLLVM_COMPILE_ANALYZE) $(SDLLVM_ANALYZE_REPORT)
   GCC:*_*_*_CC_FLAGS = $(PVMFW_BCC_ENABLED)
+  GCC:*_*_*_CC_FLAGS = $(PVMFW_USE_DUMMY_BCC)
 
 [Sources]
    libavb/avb_chain_partition_descriptor.c
@@ -73,6 +74,7 @@
    VerifiedBoot.c
    KeymasterClient.c
    Hash2Client.c
+   AvbPopulateBccParams.c
 
 [Packages]
 	ArmPkg/ArmPkg.dec

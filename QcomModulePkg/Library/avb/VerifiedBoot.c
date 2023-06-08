@@ -71,6 +71,7 @@
 #include <Library/MenuKeysDetection.h>
 #include <Library/VerifiedBootMenu.h>
 #include <Library/LEOEMCertificate.h>
+#include "AvbPopulateBccParams.h"
 
 STATIC CONST CHAR8 *VerityMode = " androidboot.veritymode=";
 STATIC CONST CHAR8 *VerifiedState = " androidboot.verifiedbootstate=";
@@ -1360,7 +1361,11 @@ IsValidPartition (Slot *Slot, CONST CHAR16 *Name)
 
 STATIC EFI_STATUS
 LoadImageAndAuthVB2 (BootInfo *Info, BOOLEAN HibernationResume,
-                        BOOLEAN SetRotAndBootState)
+                        BOOLEAN SetRotAndBootState
+#ifndef USE_DUMMY_BCC
+                        , BccParams_t *BccParams
+#endif
+                    )
 {
   EFI_STATUS Status = EFI_SUCCESS;
   AvbSlotVerifyResult Result;
@@ -1758,6 +1763,18 @@ LoadImageAndAuthVB2 (BootInfo *Info, BOOLEAN HibernationResume,
     DEBUG ((EFI_D_INFO, "VB2: Authenticate complete! boot state is: %a\n",
             VbSn[Info->BootState].name));
   }
+
+#ifndef USE_DUMMY_BCC
+  if (Info->HasPvmFw) {
+    EFI_STATUS BccStatus = PopulateBccParams (SlotData,
+                                              Info->BootIntoRecovery,
+                                              BccParams);
+    if (BccStatus != EFI_SUCCESS) {
+        DEBUG ((EFI_D_ERROR, "VB2: PopulateBccParams failed with Status: %r\n",
+                BccStatus));
+    }
+  }
+#endif
 out:
   if (Status != EFI_SUCCESS) {
     if (SlotData != NULL) {
@@ -2026,7 +2043,11 @@ skip_verification:
 
 EFI_STATUS
 LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume,
-                        BOOLEAN SetRotAndBootState)
+                        BOOLEAN SetRotAndBootState
+#ifndef USE_DUMMY_BCC
+                        , BccParams_t *BccParamsRecvdFromAVB
+#endif
+                        )
 {
   EFI_STATUS Status = EFI_SUCCESS;
   BOOLEAN MdtpActive = FALSE;
@@ -2194,7 +2215,11 @@ get_ptn_name:
     Status = LoadImageAndAuthVB1 (Info);
     break;
   case AVB_2:
-    Status = LoadImageAndAuthVB2 (Info, HibernationResume, SetRotAndBootState);
+    Status = LoadImageAndAuthVB2 (Info, HibernationResume, SetRotAndBootState
+#ifndef USE_DUMMY_BCC
+                                  , BccParamsRecvdFromAVB
+#endif
+                                  );
     break;
   case AVB_LE:
     Status = LoadImageAndAuthForLE (Info);

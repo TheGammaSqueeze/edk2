@@ -92,6 +92,7 @@
 VOID BootIntoHibernationImage (BootInfo *Info, BOOLEAN *SetRotAndBootState);
 #endif
 
+BccParams_t BccParamsRecvdFromAVB = {{0}};
 STATIC BOOLEAN BootReasonAlarm = FALSE;
 STATIC BOOLEAN BootIntoFastboot = FALSE;
 STATIC BOOLEAN BootIntoRecovery = FALSE;
@@ -405,7 +406,11 @@ flashless_boot:
   #if HIBERNATION_SUPPORT_NO_AES
     BootIntoHibernationImage (&Info, &SetRotAndBootState);
   #endif
-    Status = LoadImageAndAuth (&Info, FALSE, SetRotAndBootState);
+    Status = LoadImageAndAuth (&Info, FALSE, SetRotAndBootState
+  #ifndef USE_DUMMY_BCC
+                               , &BccParamsRecvdFromAVB
+  #endif
+                              );
     if (Status != EFI_SUCCESS) {
       DEBUG ((EFI_D_ERROR, "LoadImageAndAuth failed: %r\n", Status));
       goto fastboot;
