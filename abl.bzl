@@ -176,7 +176,7 @@ def define_abl(msm_target, variant):
     if msm_target == "autogvm":
         return
 
-    if msm_target == "pineapple" or msm_target == "pineapple-allyes" or msm_target == "gen3auto" or msm_target == "gen4auto" or msm_target == "blair" or msm_target == "sdmsteppeauto":
+    if msm_target == "pineapple" or msm_target == "pineapple-allyes" or msm_target == "gen3auto" or msm_target == "gen4auto" or msm_target == "blair" or msm_target == "sdmsteppeauto" or msm_target == "sun":
         extra_deps = ["//prebuilts/clang/host/linux-x86/clang-r450784e:binaries"]
     else:
         extra_deps = []
