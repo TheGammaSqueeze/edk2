@@ -78,6 +78,7 @@
 #define MAX_VALUE_SIZE     32
 #define MAX_ENTRY_SIZE     8
 #define MAX_AUDIO_FW_LENGTH 16
+#define DICE_HIDDEN_SIZE 32
 
 #ifdef HIBERNATION_SWAP_PARTITION_NAME
 #define SWAP_PARTITION_NAME     HIBERNATION_SWAP_PARTITION_NAME
@@ -112,6 +113,9 @@ typedef struct device_info {
   persistent_value_type  persistent_value[MAX_ENTRY_SIZE];
   UINTN GoldenSnapshot;
   CHAR8 AudioFramework[MAX_AUDIO_FW_LENGTH];
+  UINT8 FdrFlag;
+  UINT32 FrsSecLen; /*Holds length of FRS secret*/
+  UINT8 FrsSec[DICE_HIDDEN_SIZE]; /*Holds plain secret*/
 } DeviceInfo;
 
 struct verified_boot_verity_mode {
@@ -151,4 +155,6 @@ EFI_STATUS
 StoreAudioFrameWork (CONST CHAR8 *CmdLine, UINT32 CmdLineLen);
 EFI_STATUS
 ReadAudioFrameWork (CHAR8 **CmdLine, UINT32 *CmdLineLen);
+EFI_STATUS
+SetFDRFlag (VOID);
 #endif

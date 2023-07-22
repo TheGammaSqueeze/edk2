@@ -646,3 +646,21 @@ SetSnapshotGolden (UINTN Val)
   }
   return Status;
 }
+
+/* Set FDR Flag and clear FRS secret from DevInfo*/
+EFI_STATUS
+SetFDRFlag (VOID)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+
+  DevInfo.FdrFlag = 1;
+  DevInfo.FrsSecLen = 0;
+  gBS->SetMem (DevInfo.FrsSec, sizeof (DevInfo.FrsSec), 0);
+  Status = ReadWriteDeviceInfo (WRITE_CONFIG,
+                        (VOID *)&DevInfo, sizeof (DevInfo));
+  if (Status != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "Unable to Write Device Info: %r\n", Status));
+  }
+
+  return Status;
+}

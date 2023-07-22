@@ -240,6 +240,7 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
   EFI_MEM_CARDINFO_PROTOCOL *CardInfo = NULL;
   /* set ROT and BootSatte only once per boot*/
   BOOLEAN SetRotAndBootState = FALSE;
+  BOOLEAN FDRDetected = FALSE;
 
   DEBUG ((EFI_D_INFO, "Loader Build Info: %a %a\n", __DATE__, __TIME__));
   DEBUG ((EFI_D_VERBOSE, "LinuxLoader Load Address to debug ABL: 0x%llx\n",
@@ -376,6 +377,20 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
   Status = RecoveryInit (&BootIntoRecovery);
   if (Status != EFI_SUCCESS)
     DEBUG ((EFI_D_VERBOSE, "RecoveryInit failed ignore: %r\n", Status));
+
+   if (BootIntoRecovery) {
+    Status = DetectFDR (&FDRDetected);
+    if (Status != EFI_SUCCESS) {
+      DEBUG ((EFI_D_ERROR, "DetectFDR failed: %r\n", Status));
+    }
+    if (FDRDetected) {
+      DEBUG ((EFI_D_INFO, "LinuxloaderEntry: FDRDetected\n"));
+      Status = SetFDRFlag ();
+      if (Status != EFI_SUCCESS) {
+        DEBUG ((EFI_D_ERROR, "SetFDRFlag failed: %r\n", Status));
+      }
+    }
+  }
 
 flashless_boot:
   /* Populate board data required for fastboot, dtb selection and cmd line */

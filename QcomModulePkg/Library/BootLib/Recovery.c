@@ -26,6 +26,42 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ *  Redistribution and use in source and binary forms, with or without
+ *  modification, are permitted (subject to the limitations in the
+ *  disclaimer below) provided that the following conditions are met:
+ *
+ *      * Redistributions of source code must retain the above copyright
+ *        notice, this list of conditions and the following disclaimer.
+ *
+ *      * Redistributions in binary form must reproduce the above
+ *        copyright notice, this list of conditions and the following
+ *        disclaimer in the documentation and/or other materials provided
+ *        with the distribution.
+ *
+ *      * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
+ *        contributors may be used to endorse or promote products derived
+ *        from this software without specific prior written permission.
+ *
+ *  NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
+ *  GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
+ *  HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+ *   WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ *  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ *  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ *  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ *  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+ *  IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ *  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+ *  IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
 #include "Recovery.h"
 #include "AutoGen.h"
 #include <Library/LinuxLoaderLib.h>
@@ -399,5 +435,75 @@ GetFfbmCommand (CHAR8 *FfbmString, UINT32 Sz)
   FreePool (FfbmData);
   FfbmData = NULL;
 
+  return Status;
+}
+
+EFI_STATUS
+DetectFDR (BOOLEAN *FDRDetected)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+  struct RecoveryMessage *Msg = NULL;
+  EFI_GUID Ptype = gEfiMiscPartitionGuid;
+  MemCardType CardType = UNKNOWN;
+  VOID *PartitionData = NULL;
+  UINT32 PageSize = 0;
+
+  if (FDRDetected == NULL) {
+    DEBUG ((EFI_D_ERROR, "DetectFDR: Parameter received is NULL\n"));
+    Status = EFI_INVALID_PARAMETER;
+    goto out;
+  }
+
+  CardType = CheckRootDeviceType ();
+  if (CardType == NAND) {
+    Status = GetNandMiscPartiGuid (&Ptype);
+    if (Status != EFI_SUCCESS) {
+      return Status;
+    }
+  }
+
+  GetPageSize (&PageSize);
+
+  /* Get the first 2 pages of the misc partition.
+   * If the device type is NAND then read the recovery message from page 1,
+   * Else read from the page 0
+   */
+  Status = ReadFromPartition (&Ptype, (VOID **)&PartitionData, (PageSize * 2));
+  if (Status != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "Error Reading from misc partition: %r\n", Status));
+    return Status;
+  }
+
+  if (!PartitionData) {
+    DEBUG ((EFI_D_ERROR, "Error in loading Data from misc partition\n"));
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Msg = (CardType == NAND) ?
+           (struct RecoveryMessage *) ((CHAR8 *) PartitionData + PageSize) :
+           (struct RecoveryMessage *) PartitionData;
+
+  // Ensure NULL termination
+  Msg->command[sizeof (Msg->command) - 1] = '\0';
+  if (Msg->command[0] != 0 &&
+      Msg->command[0] != 255) {
+    DEBUG ((EFI_D_VERBOSE, "Recovery command: %d %a\n", sizeof (Msg->command),
+            Msg->command));
+    DEBUG ((EFI_D_VERBOSE, "Recovery recovery: %d %a\n", sizeof (Msg->recovery),
+            Msg->recovery));
+  }
+
+  if (!AsciiStrnCmp (Msg->command, RECOVERY_BOOT_RECOVERY,
+                       AsciiStrLen (RECOVERY_BOOT_RECOVERY) &&
+      !AsciiStrnCmp (Msg->recovery, RECOVERY_WIPE_DATA ,
+                       AsciiStrLen (RECOVERY_WIPE_DATA )))) {
+    *FDRDetected = TRUE;
+  }
+
+  FreePool (PartitionData);
+  PartitionData = NULL;
+  Msg = NULL;
+
+out:
   return Status;
 }
