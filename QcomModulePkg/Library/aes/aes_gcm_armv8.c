@@ -97,6 +97,9 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define UC_EXPORT_API                    __attribute__((visibility("default")))
 UC_LOCAL_API int aes_v8_set_encrypt_key(const uint8_t *user_key, const int bits, AES_KEY *key);
 UC_LOCAL_API void aes_v8_encrypt(const uint8_t *in, uint8_t *out, const AES_KEY *key);
+UC_LOCAL_API void aes_v8_ctr32_encrypt_blocks(const uint8_t *in, uint8_t *out,
+                                              size_t blocks, const void *key,
+                                              const uint8_t ivec[16]);
 #endif
 
 static size_t get_key_sz(SW_Cipher_Alg_Type pAlgo)
@@ -177,7 +180,8 @@ sw_crypto_errno_enum_type AES_GCM_ARMV8_Cipherdata(AES_GCM_ARMV8_CTX *c,
              UC_E_FAILURE);
   } else {
     DEBUG ((EFI_D_VERBOSE,"decrypting %s:%d \n", __func__, __LINE__));
-    UC_GUARD(0 == (ret = CRYPTO_gcm128_decrypt(c->ctx, ibuf, obuf, isz)),
+    UC_GUARD(0 == (ret = CRYPTO_gcm128_decrypt_ctr32(c->ctx, ibuf, obuf, isz,
+             aes_v8_ctr32_encrypt_blocks)),
              UC_E_FAILURE);
   }
   DEBUG ((EFI_D_VERBOSE,"end : %s:%d \n", __func__, __LINE__));
