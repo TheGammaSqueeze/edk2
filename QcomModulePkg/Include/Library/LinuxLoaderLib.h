@@ -85,6 +85,7 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
+#include <Library/Board.h>
 #include <PiDxe.h>
 #include <Protocol/BlockIo.h>
 #include <Protocol/DevicePath.h>
@@ -149,6 +150,12 @@
 
 #define BOOT_DEV_MAX_LEN 32
 #define BOOT_DEV_NAME_SIZE_MAX 10
+
+/* Macros to check the boot type */
+#define EFI_EMMC_NETWORK_FLASH_TYPE 14
+#define EFI_MMC_FLASH_TYPE 5
+#define EFI_PCIE_FLASH_TYPE 7
+#define EFI_MAX_FLASH_TYPE  0x7FFFFFFF
 
 /* Allocate unsafe stack size of 128KB to address worst case,
  * which is same as the  normal stack size */
@@ -218,6 +225,7 @@ EFI_STATUS
 ErasePartition (EFI_BLOCK_IO_PROTOCOL *BlockIo, EFI_HANDLE *Handle);
 EFI_STATUS
 GetBootDevice (CHAR8 *BootDevBuf, UINT32 Len);
+UINT32 GetBootDeviceType ();
 
 /* Returns whether MDTP is active or not,
  * or whether it should be considered active for
@@ -239,6 +247,8 @@ WriteBlockToPartition (EFI_BLOCK_IO_PROTOCOL *BlockIo,
                    IN UINT64 Offset,
                    IN UINT64 Size,
                    IN VOID *Image);
+
+VOID StoreRootDeviceType (VOID);
 
 #ifdef AUDIO_FRAMEWORK
 STATIC inline CHAR8* GetAudioFw (VOID)
