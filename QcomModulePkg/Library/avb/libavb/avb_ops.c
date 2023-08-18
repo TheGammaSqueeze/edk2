@@ -53,7 +53,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following
  * license:
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the disclaimer
@@ -360,12 +360,14 @@ out:
 	return Result;
 }
 
+#if AVB_ENABLE_LEGACY_FEATURE
 AvbIOResult AvbWriteToPartition(AvbOps *Ops, const char *Partition, int64_t Offset,
                                 size_t NumBytes, const void *Buffer)
 {
 	/* unsupported api */
 	return AVB_IO_RESULT_ERROR_IO;
 }
+#endif
 
 AvbIOResult
 AvbValidateVbmetaPublicKey(AvbOps *Ops, const uint8_t *PublicKeyData,
@@ -733,7 +735,9 @@ AvbOps *AvbOpsNew(VOID *UserData)
 
   Ops->user_data = UserData;
   Ops->read_from_partition = AvbReadFromPartition;
+#if AVB_ENABLE_LEGACY_FEATURE
   Ops->write_to_partition = AvbWriteToPartition;
+#endif
   Ops->validate_vbmeta_public_key = AvbValidateVbmetaPublicKey;
   Ops->validate_public_key_for_partition = AvbValidatePartitionPublicKey;
   Ops->read_rollback_index = AvbReadRollbackIndex;

@@ -426,6 +426,9 @@ SetVerifiedBootHash (CONST CHAR8 *Vbh, UINTN VbhSize)
   return EFI_SUCCESS;
 }
 
+#if AVB_ENABLE_LEGACY_FEATURE
+/* To use the code protected by this flag, add the flag to
+ * GCC:*_*_*_CC_FLAGS  in AvbLib.inf*/
 EFI_STATUS
 KeyMasterGetDateSupport (BOOLEAN *Supported)
 {
@@ -455,6 +458,7 @@ KeyMasterGetDateSupport (BOOLEAN *Supported)
   *Supported = TRUE;
   return Status;
 }
+#endif
 
 EFI_STATUS
 KeyMasterSetRotForLE (KMRotAndBootStateForLE *BootState)
