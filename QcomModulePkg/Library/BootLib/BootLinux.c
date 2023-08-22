@@ -1493,7 +1493,8 @@ BootLinux (BootInfo *Info)
 
   if (!FlashlessBoot) {
     if (!StrnCmp (PartitionName, (CONST CHAR16 *)L"boot",
-                  StrLen ((CONST CHAR16 *)L"boot"))) {
+                  StrLen ((CONST CHAR16 *)L"boot")) &&
+                   !TargetBuildVariantUser ()) {
       Status = GetFfbmCommand (FfbmStr, FFBM_MODE_BUF_SIZE);
       if (Status != EFI_SUCCESS) {
         DEBUG ((EFI_D_VERBOSE, "No Ffbm cookie found, ignore: %r\n", Status));
