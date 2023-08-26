@@ -191,7 +191,17 @@ def define_abl(msm_target, variant):
         name = "{}_abl".format(target),
         kernel_build = "//msm-kernel:{}_env".format(target),
         abl_build_config = abl_build_config,
-        srcs = native.glob(["**"]) + extra_srcs,
+        srcs = native.glob(
+            ["**"],
+            exclude=[
+                "**/*.pyc",
+                "**/__pycache__/**",
+                "Conf/BuildEnv.sh",
+                "Conf/.AutoGenIdFile.txt",
+                "Build/**",
+                "out/**",
+            ],
+        ) + extra_srcs,
         extra_function_snippets = extra_function_snippets,
         extra_post_gen_snippets = extra_post_gen_snippets,
         extra_build_configs = extra_build_configs,
