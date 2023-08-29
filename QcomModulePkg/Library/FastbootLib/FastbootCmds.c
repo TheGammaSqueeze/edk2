@@ -290,15 +290,24 @@ BOOLEAN IsDisableParallelDownloadFlash (VOID)
 }
 #endif
 
-/* Clean up memory for the getvar variables during exit */
+/* Clean up memory for the getvar and cmdlist variables
+ * during exit.
+ */
 STATIC EFI_STATUS FastbootUnInit (VOID)
 {
   FASTBOOT_VAR *Var;
+  FASTBOOT_CMD *cmd;
 
   while (Varlist) {
     Var = Varlist;
     Varlist = Varlist->next;
     FreePool (Var);
+  }
+
+  while (cmdlist) {
+    cmd = cmdlist;
+    cmdlist = cmdlist->next;
+    FreePool (cmd);
   }
   return EFI_SUCCESS;
 }
