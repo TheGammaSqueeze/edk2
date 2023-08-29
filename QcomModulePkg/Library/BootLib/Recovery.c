@@ -485,19 +485,30 @@ DetectFDR (BOOLEAN *FDRDetected)
 
   // Ensure NULL termination
   Msg->command[sizeof (Msg->command) - 1] = '\0';
+  Msg->recovery[sizeof (Msg->recovery) - 1] = '\0';
+  /* Compare the strings only when they are not NULL
+   * And is not blank.
+   */
   if (Msg->command[0] != 0 &&
-      Msg->command[0] != 255) {
+      Msg->command[0] != 255 &&
+      Msg->recovery[0] != 0 &&
+      Msg->recovery[0] != 255) {
     DEBUG ((EFI_D_VERBOSE, "Recovery command: %d %a\n", sizeof (Msg->command),
             Msg->command));
     DEBUG ((EFI_D_VERBOSE, "Recovery recovery: %d %a\n", sizeof (Msg->recovery),
             Msg->recovery));
-  }
 
-  if (!AsciiStrnCmp (Msg->command, RECOVERY_BOOT_RECOVERY,
-                       AsciiStrLen (RECOVERY_BOOT_RECOVERY) &&
-      !AsciiStrnCmp (Msg->recovery, RECOVERY_WIPE_DATA ,
-                       AsciiStrLen (RECOVERY_WIPE_DATA )))) {
-    *FDRDetected = TRUE;
+    if ((!AsciiStrnCmp (Msg->command, RECOVERY_BOOT_RECOVERY,
+                         AsciiStrLen (RECOVERY_BOOT_RECOVERY))) &&
+        (!AsciiStrnCmp (Msg->recovery, RECOVERY_FACTORY_DATA_RESET,
+                         AsciiStrLen (RECOVERY_FACTORY_DATA_RESET)))) {
+
+      /* If Recovery msg's command field has "boot-recovery" and
+       * recovery field has "recovery\n--wipe_data\n--reason=MainClearConfirm"
+       * in its string. Then, only set FDR as true.
+       */
+      *FDRDetected = TRUE;
+    }
   }
 
   FreePool (PartitionData);
