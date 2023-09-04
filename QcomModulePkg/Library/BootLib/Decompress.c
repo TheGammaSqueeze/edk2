@@ -29,7 +29,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -123,7 +123,8 @@ decompress (unsigned char *in_buf,
   int rc = -1;
   int i;
 
-  if (in_len <= GZIP_HEADER_LEN) {
+  if (in_len <= GZIP_HEADER_LEN ||
+      !in_buf) {
     DEBUG ((EFI_D_ERROR, "the input data is not a gzip package.\n"));
     return rc;
   }
