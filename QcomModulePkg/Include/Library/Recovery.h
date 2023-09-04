@@ -72,6 +72,8 @@
 
 #define RECOVERY_BOOT_RECOVERY "boot-recovery"
 #define RECOVERY_BOOT_FASTBOOT "boot-fastboot"
+#define RECOVERY_FACTORY_DATA_RESET \
+  "recovery\n--wipe_data\n--reason=MainClearConfirm"
 
 /* Recovery Message */
 struct RecoveryMessage {
