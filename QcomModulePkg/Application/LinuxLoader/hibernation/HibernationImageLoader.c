@@ -896,7 +896,7 @@ static INT32 ReadDataPages (VOID *Arg)
         UINT64 SrcPfn, DstPfn;
         UINT64 PfnIndex = 0;
         INT32 Ret;
-
+        Thread* CurrentThread = KernIntf->Thread->GetCurrentThread ();
         RestoreInfo *Info = (RestoreInfo *) Arg;
 
         PendingPages = Info->NumPages;
@@ -945,6 +945,8 @@ static INT32 ReadDataPages (VOID *Arg)
 err:
 #endif
         KernIntf->Sem->SemPost (Info->Sem, FALSE);
+        ThreadStackNodeRemove (CurrentThread);
+        KernIntf->Thread->ThreadExit (0);
         return 0;
 }
 
