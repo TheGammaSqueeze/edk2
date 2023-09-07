@@ -101,7 +101,7 @@ typedef struct FreeRanges {
 #define NUM_PAGES_PER_GOLD_CORE ((NrCopyPages / 54) * 9)
 #define NUM_PAGES_PER_SILVER_CORE ((NrCopyPages / 54) * 4)
 
-static struct DecryptParam Dp;
+static struct DecryptParam *Dp;
 static CHAR8 *Authtags;
 static VOID *AuthCur[NUM_CORES];
 static VOID *TempOut[NUM_CORES];
@@ -700,24 +700,24 @@ static INT32 DecryptPage (VOID *EncryptData, CHAR8 *Auth, VOID *TempOut,
                 sizeof (UnwrappedKey), &Ctx[ThreadId])) {
                 return -1;
         }
-        IncrementIV (Iv, sizeof (Dp.Iv), 1);
-        if (SW_Cipher_SetParam (SW_CIPHER_PARAM_IV, Iv, sizeof (Dp.Iv),
+        IncrementIV (Iv, sizeof (Dp->Iv), 1);
+        if (SW_Cipher_SetParam (SW_CIPHER_PARAM_IV, Iv, sizeof (Dp->Iv),
                                 &Ctx[ThreadId])) {
                 return -1;
         }
-        if (SW_Cipher_SetParam (SW_CIPHER_PARAM_AAD, (VOID *)Dp.Aad,
-                sizeof (Dp.Aad), &Ctx[ThreadId])) {
+        if (SW_Cipher_SetParam (SW_CIPHER_PARAM_AAD, (VOID *)Dp->Aad,
+                sizeof (Dp->Aad), &Ctx[ThreadId])) {
                 return -1;
         }
         if (SW_CipherData (ioVecIn, &ioVecOut, &Ctx[ThreadId])) {
                 return -1;
         }
         if (SW_Cipher_GetParam (SW_CIPHER_PARAM_TAG, (VOID*)(AuthCurrent),
-                Dp.Authsize, &Ctx[ThreadId])) {
+                Dp->Authsize, &Ctx[ThreadId])) {
                 return -1;
         }
 
-        if (MemCmp (AuthCurrent, Auth, Dp.Authsize)) {
+        if (MemCmp (AuthCurrent, Auth, Dp->Authsize)) {
                 printf ("Auth Comparsion failed 0x%llx\n", Auth);
                 return -1;
         }
@@ -878,7 +878,7 @@ static UINT64* ReadKernelImagePfnIndexes (UINT64 *Offset)
                         printf ("Decryption failed for pfn array\n");
                         return NULL;
                 }
-                Authtags += Dp.Authsize;
+                Authtags += Dp->Authsize;
 #endif
                 PfnArrayStart = (CHAR8 *)PfnArrayStart + PAGE_SIZE;
                 PendingPages++;
@@ -931,7 +931,7 @@ static INT32 ReadDataPages (VOID *Arg)
                                         Info->Status = -1;
                                         goto err;
                                 }
-                                Info->Authtags += Dp.Authsize;
+                                Info->Authtags += Dp->Authsize;
 #endif
                                 CopyPageToDst (SrcPfn, DstPfn);
                         }
@@ -1228,12 +1228,12 @@ static INT32 InitTaAndGetKey (struct Secs2dTaHandle *TaHandle)
                 RspLen = QSEECOM_ALIGN (RspLen);
         }
 
-        gBS->CopyMem ((VOID *)(IvGlb), (VOID *)(Dp.Iv), sizeof (Dp.Iv));
+        gBS->CopyMem ((VOID *)(IvGlb), (VOID *)(Dp->Iv), sizeof (Dp->Iv));
 
         Req.Cmd = UNWRAP_KEY_CMD;
         Req.UnwrapkeyReq.WrappedKeySize = WRAPPED_KEY_SIZE;
         gBS->CopyMem ((VOID *)Req.UnwrapkeyReq.WrappedKeyBuffer,
-                        (VOID *)Dp.KeyBlob, sizeof (Dp.KeyBlob));
+                        (VOID *)Dp->KeyBlob, sizeof (Dp->KeyBlob));
         Req.UnwrapkeyReq.CurrTime.Hour = 4;
         Status = TaHandle->QseeComProtocol->QseecomSendCmd (
                 TaHandle->QseeComProtocol, TaHandle->AppId,
@@ -1255,15 +1255,21 @@ static INT32 InitAesDecrypt (VOID)
         Secs2dTaHandle TaHandle = {0};
         UINT32 NrSwapMapPages, i;
 
+        Dp = AllocatePages (1);
+        if (!Dp) {
+                printf ("Memory alloc failed Line %d\n", __LINE__);
+                return -1;
+        }
+
         NrSwapMapPages = (NrCopyPages + NrMetaPages) / ENTRIES_PER_SWAPMAP_PAGE;
         AuthslotStart = NrMetaPages + NrCopyPages + NrSwapMapPages +
                               HDR_SWP_INFO_NUM_PAGES;
 
-        if (ReadImage (AuthslotStart - 1, &Dp, sizeof (struct DecryptParam))) {
+        if (ReadImage (AuthslotStart - 1, Dp, 1)) {
                 return -1;
         }
 
-        AuthslotCount = Dp.AuthCount;
+        AuthslotCount = Dp->AuthCount;
         Authtags = AllocatePages (AuthslotCount);
         if (!Authtags) {
                 return -1;
@@ -1276,7 +1282,7 @@ static INT32 InitAesDecrypt (VOID)
                 if (!TempOut[i]) {
                         return -1;
                 }
-                AuthCur[i] = AllocateZeroPool (Dp.Authsize);
+                AuthCur[i] = AllocateZeroPool (Dp->Authsize);
                 if (!AuthCur[i]) {
                         return -1;
                 }
@@ -1331,7 +1337,7 @@ static INT32 RestoreSnapshotImage (VOID)
         for (Iter1 = 0; Iter1 < NUM_SILVER_CORES; Iter1++) {
                 INT32 Iter2;
                 UINT64 Count = 0;
-                gBS->CopyMem (Info[Iter1].Iv, IvGlb, sizeof (Dp.Iv));
+                gBS->CopyMem (Info[Iter1].Iv, IvGlb, sizeof (Dp->Iv));
                 Info[Iter1].Offset = Offset;
                 Info[Iter1].Authtags = Authtags;
                 Info[Iter1].NumPages = NUM_PAGES_PER_SILVER_CORE;
@@ -1342,15 +1348,15 @@ static INT32 RestoreSnapshotImage (VOID)
                         }
                         Offset++;
                         PfnOffset++;
-                        Authtags += Dp.Authsize;
+                        Authtags += Dp->Authsize;
                         Count++;
                 }
-                IncrementIV (IvGlb, sizeof (Dp.Iv), Count);
+                IncrementIV (IvGlb, sizeof (Dp->Iv), Count);
         }
         for (Iter1 = NUM_SILVER_CORES; Iter1 < NUM_CORES - 1; Iter1++) {
                 INT32 Iter2;
                 UINT64 Count = 0;
-                gBS->CopyMem (Info[Iter1].Iv, IvGlb, sizeof (Dp.Iv));
+                gBS->CopyMem (Info[Iter1].Iv, IvGlb, sizeof (Dp->Iv));
                 Info[Iter1].Offset = Offset;
                 Info[Iter1].Authtags = Authtags;
                 Info[Iter1].NumPages = NUM_PAGES_PER_GOLD_CORE;
@@ -1361,13 +1367,13 @@ static INT32 RestoreSnapshotImage (VOID)
                         }
                         Offset++;
                         PfnOffset++;
-                        Authtags += Dp.Authsize;
+                        Authtags += Dp->Authsize;
                         Count++;
                 }
-                IncrementIV (IvGlb, sizeof (Dp.Iv), Count);
+                IncrementIV (IvGlb, sizeof (Dp->Iv), Count);
         }
         Info[Iter1].Authtags = Authtags;
-        gBS->CopyMem (Info[Iter1].Iv, IvGlb, sizeof (Dp.Iv));
+        gBS->CopyMem (Info[Iter1].Iv, IvGlb, sizeof (Dp->Iv));
 #endif
         Info[Iter1].Offset = Offset;
         Info[Iter1].NumPages = NrCopyPages - (4 * NUM_PAGES_PER_SILVER_CORE) -
