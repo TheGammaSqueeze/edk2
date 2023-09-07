@@ -99,9 +99,9 @@ GetAVBVersion ();
  * for cold boot sequence and TRUE
  * for Hibernation Resume
  *
- * @param[in] SetRotAndBootState FALSE by
- * default and TRUE incase of ROT and
- * BootState already set
+ * @param[in] SetRotAndBootStateAndVBH FALSE
+ * by default and TRUE incase of ROT ,
+ * BootState and VBH already set
  *
  * @param[in] BccParamsRecvdFromAVB
  * It will contain populated BCC parameters
