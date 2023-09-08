@@ -34,7 +34,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -98,7 +98,7 @@
 #define VERSION_STR_LEN 96
 #define FASTBOOT_STRING_MAX_LENGTH 256
 #define FASTBOOT_COMMAND_MAX_LENGTH 64
-#define MAX_GET_VAR_NAME_SIZE 32
+#define MAX_GET_VAR_NAME_SIZE 36
 #define SIGACTUAL 4096
 #define SLOT_SUFFIX_ARRAY_SIZE 10
 #define SLOT_ATTR_SIZE 32
