@@ -201,7 +201,7 @@ def define_abl(msm_target, variant):
     if msm_target == "autogvm":
         return
 
-    if msm_target == "pineapple" or msm_target == "pineapple-allyes" or msm_target == "gen3auto" or msm_target == "gen4auto" or msm_target == "blair" or msm_target == "sdmsteppeauto" or msm_target == "sun" or msm_target == "pitti":
+    if msm_target == "pineapple" or msm_target == "pineapple-allyes" or msm_target == "gen3auto" or msm_target == "gen4auto" or msm_target == "blair" or msm_target == "sdmsteppeauto" or msm_target == "sun" or msm_target == "pitti" or msm_target == "niobe":
         clang_version = "clang-r450784e"
         extra_deps = ["//prebuilts/clang/host/linux-x86/{}:binaries".format(clang_version)]
     else:
