@@ -1247,6 +1247,14 @@ static INT32 InitTaAndGetKey (struct Secs2dTaHandle *TaHandle)
         }
         gBS->CopyMem ((VOID *)UnwrappedKey,
                         (VOID *)Rsp.UnwrapkeyRsp.KeyBuffer, 32);
+
+        Status = TaHandle->QseeComProtocol->QseecomShutdownApp (
+                TaHandle->QseeComProtocol, TaHandle->AppId);
+        if (Status) {
+                printf ("Error in secs2d app loading\n");
+                return -1;
+        }
+
         return 0;
 }
 
