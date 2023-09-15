@@ -1103,21 +1103,25 @@ LoadAddrAndDTUpdate (BootInfo *Info, BootParamlist *BootParamlistPtr)
 #ifdef PVMFW_BCC
   UINT64 PvmFwLoadAddr = 0;
 #endif
-  UINT32 VRamdiskSizePageAligned =
-    LOCAL_ROUND_TO_PAGE (BootParamlistPtr->VendorRamdiskSize,
-    BootParamlistPtr->PageSize);
-  UINT32 VDtbSizePageAligned =
-    LOCAL_ROUND_TO_PAGE (BootParamlistPtr->DtSize,
-    BootParamlistPtr->PageSize);
-  UINT32 VRamdiskTablesizePageAligned =
-    LOCAL_ROUND_TO_PAGE (BootParamlistPtr->VendorRamdiskTableSize,
-    BootParamlistPtr->PageSize);
+  UINT32 VRamdiskSizePageAligned;
+  UINT32 VDtbSizePageAligned;
+  UINT32 VRamdiskTablesizePageAligned;
   VOID *RamdiskImageBuffer;
 
   if (BootParamlistPtr == NULL) {
     DEBUG ((EFI_D_ERROR, "Invalid input parameters\n"));
     return EFI_INVALID_PARAMETER;
   }
+
+  VRamdiskSizePageAligned =
+    LOCAL_ROUND_TO_PAGE (BootParamlistPtr->VendorRamdiskSize,
+    BootParamlistPtr->PageSize);
+  VDtbSizePageAligned =
+    LOCAL_ROUND_TO_PAGE (BootParamlistPtr->DtSize,
+    BootParamlistPtr->PageSize);
+  VRamdiskTablesizePageAligned =
+    LOCAL_ROUND_TO_PAGE (BootParamlistPtr->VendorRamdiskTableSize,
+    BootParamlistPtr->PageSize);
 
   if ((Info->HasBootInitRamdisk) &&
          (Info->HeaderVersion >= BOOT_HEADER_VERSION_FOUR)) {
