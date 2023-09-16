@@ -1638,7 +1638,8 @@ static VOID EraseSwapSignature (VOID)
         }
 }
 
-VOID BootIntoHibernationImage (BootInfo *Info, BOOLEAN *SetRotAndBootState)
+VOID BootIntoHibernationImage (BootInfo *Info,
+                               BOOLEAN *SetRotAndBootStateAndVBH)
 {
         INT32 Ret;
         EFI_STATUS Status = EFI_SUCCESS;
@@ -1648,8 +1649,8 @@ VOID BootIntoHibernationImage (BootInfo *Info, BOOLEAN *SetRotAndBootState)
                 return;
         }
 
-        if (!SetRotAndBootState) {
-                printf ("SetRotAndBootState cannot be NULL.\n");
+        if (!SetRotAndBootStateAndVBH) {
+                printf ("SetRotAndBootStateAndVBH cannot be NULL.\n");
                 goto err;
         }
 
@@ -1663,12 +1664,12 @@ VOID BootIntoHibernationImage (BootInfo *Info, BOOLEAN *SetRotAndBootState)
                 goto err;
         }
 
-        /* ROT and BootState are set only once per boot.
-         * set variable to TRUE to Avoid setting second
-         * time incase hbernation resume fails at restore
-         * snapshot stage..
+        /* ROT, BootState and VBH are set only once per boot.
+         * set variable to TRUE to Avoid setting second time
+         * incase hbernation resume fails at restore snapshot
+         * stage.
          */
-         *SetRotAndBootState = TRUE;
+        *SetRotAndBootStateAndVBH = TRUE;
 
         Status = KeyMasterFbeSetSeed ();
         if (Status != EFI_SUCCESS) {
