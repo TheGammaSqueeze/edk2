@@ -162,7 +162,7 @@ endef
 Arguments should be return value, current version and supported version in order. \
 It sets return value to true if the current version is equal or greater than the supported version.
 define check_version_compatibility
-	$(eval CURR_VERSION := $(shell $(2)/clang --version |& grep -i "clang version" |& sed 's/[^0-9.]//g'))
+	$(eval CURR_VERSION := $(shell $(2)/clang --version |& grep -i "clang version" |& sed 's/^.*[^0-9]\([0-9]*\.[0-9]*\)\..*/\1/'))
 	$(eval CURR_VERSION_MAJOR := $(shell echo $(CURR_VERSION) |& cut -d. -f1))
 	$(eval CURR_VERSION_MINOR := $(shell echo $(CURR_VERSION) |& cut -d. -f2))
 	$(eval SUPPORTED_VERSION := $(3))
@@ -273,8 +273,10 @@ endif
 export SDLLVM_COMPILE_ANALYZE := $(SDLLVM_COMPILE_ANALYZE)
 export SDLLVM_ANALYZE_REPORT := $(SDLLVM_ANALYZE_REPORT)
 
+ifdef $(SAFESTACK_SUPPORTED_CLANG_VERSION)
 CLANG_SUPPORTS_SAFESTACK := false
 $(eval $(call check_version_compatibility, CLANG_SUPPORTS_SAFESTACK, $(CLANG_BIN), $(SAFESTACK_SUPPORTED_CLANG_VERSION)))
+endif
 
 ifeq "$(ABL_SAFESTACK)" "true"
 	ifeq "$(CLANG_SUPPORTS_SAFESTACK)" "true"
@@ -290,6 +292,13 @@ endif
 export LLVM_ENABLE_SAFESTACK := $(LLVM_ENABLE_SAFESTACK)
 export LLVM_SAFESTACK_USE_PTR := $(LLVM_SAFESTACK_USE_PTR)
 export LLVM_SAFESTACK_COLORING := $(LLVM_SAFESTACK_COLORING)
+
+CLANG_NEED_EXTRA_DLINK_FLAGS := false
+$(eval $(call check_version_compatibility, CLANG_NEED_EXTRA_DLINK_FLAGS, $(CLANG_BIN), 17.0))
+
+ifeq "$(CLANG_NEED_EXTRA_DLINK_FLAGS)" "true"
+	export CLANG_EXTRA_DLINK_FLAGS := -Wl,--no-relax -Wl,--apply-dynamic-relocs
+endif
 
 .PHONY: all cleanall srpm
 
