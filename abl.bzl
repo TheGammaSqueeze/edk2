@@ -2,6 +2,7 @@ load("//build/kernel/kleaf:directory_with_structure.bzl", dws = "directory_with_
 load("//build/kernel/kleaf:hermetic_tools.bzl", "hermetic_toolchain")
 load("//msm-kernel:target_variants.bzl", "get_all_variants")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
+load("@kernel_toolchain_info//:dict.bzl", "VARS")
 load(
     "//build:abl_extensions.bzl",
     "extra_build_configs",
@@ -26,6 +27,7 @@ def _abl_impl(ctx):
       ROOT_DIR="$PWD"
       ABL_OUT_DIR=${{ROOT_DIR}}/bootable/bootloader/edk2/out
       CLANG_VERSION="{clang_version}"
+      CLANG_PREBUILT_BIN="prebuilts/clang/host/linux-x86/clang-$CLANG_VERSION/bin"
 
       # Stub out append_cmd
       append_cmd() {{
@@ -36,7 +38,7 @@ def _abl_impl(ctx):
       source "{kernel_build_config}"
 
       if [ -n "$CLANG_VERSION" ]; then
-        export PATH="${{ROOT_DIR}}/prebuilts/clang/host/linux-x86/${{CLANG_VERSION}}/bin:${{PATH}}"
+        export PATH="${{ROOT_DIR}}/prebuilts/clang/host/linux-x86/clang-${{CLANG_VERSION}}/bin:${{PATH}}"
       else
         export PATH="${{ROOT_DIR}}"/prebuilts/clang/host/linux-x86/*/bin:"${{PATH}}"
       fi
@@ -201,12 +203,8 @@ def define_abl(msm_target, variant):
     if msm_target == "autogvm":
         return
 
-    if msm_target == "pineapple" or msm_target == "pineapple-allyes" or msm_target == "gen3auto" or msm_target == "gen4auto" or msm_target == "blair" or msm_target == "sdmsteppeauto" or msm_target == "sun" or msm_target == "pitti" or msm_target == "niobe" or msm_target == "monaco":
-        clang_version = "clang-r450784e"
-        extra_deps = ["//prebuilts/clang/host/linux-x86/{}:binaries".format(clang_version)]
-    else:
-        clang_version = ""
-        extra_deps = []
+    clang_version = VARS["CLANG_VERSION"]
+    extra_deps = ["//prebuilts/clang/host/linux-x86/clang-{}:binaries".format(clang_version)]
 
     kernel_build_config = "//msm-kernel:{}_build_config_bazel".format(target)
     abl_build_config = "build.config.msm.{}".format(msm_target.replace("-", "."))
