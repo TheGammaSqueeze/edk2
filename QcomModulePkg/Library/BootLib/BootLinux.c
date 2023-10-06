@@ -1019,6 +1019,8 @@ CreatePvmFwConfig (PvmFwConfigHeader *Hdr, size_t BccSize) {
   Header.Magic = 0x666D7670;
   //version 1,0
   Header.Version = ((UINT32) 1 << 16) | (UINT32) 0;
+  //Feature flags; currently reserved and must be zero.
+  Header.Flags = 0;
   //BCC Handover blob: 8 byte alligned
   Header.Entries[0].Offset = 0x20;
   Header.Entries[0].Size = BccSize;
