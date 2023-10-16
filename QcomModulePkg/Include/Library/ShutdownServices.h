@@ -134,7 +134,7 @@ typedef enum {
 typedef struct {
   CHAR16 DataBuffer[12];
   UINT8 Bdata;
-} __attribute ((__packed__)) ResetDataType;
+} __attribute ((packed, aligned (2))) ResetDataType;
 
 // BdsHelper.c
 EFI_STATUS
