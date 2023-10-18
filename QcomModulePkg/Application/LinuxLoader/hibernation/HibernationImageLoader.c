@@ -80,6 +80,7 @@
 #endif
 #include "KeymasterClient.h"
 
+#define IS_ZERO_PFN(pfn) ((pfn) & ((UINT64) 1 << 63))
 #define BUG(Fmt, ...) {\
                 printf ("Fatal error " Fmt, ##__VA_ARGS__); \
                 while (1); \
@@ -132,6 +133,8 @@ static UINT32 NrCopyPages;
 static UINT32 NrMetaPages;
 /* number of image kernel pages bounced due to conflict with UEFI */
 static UINT64 BouncedPages;
+/* zero page pfn */
+static UINT64 ZeroPagePfn;
 
 static struct ArchHibernateHdr *ResumeHdr;
 
@@ -610,6 +613,19 @@ static VOID CopyPageToDst (UINT64 SrcPfn, UINT64 DstPfn)
         }
 }
 
+static VOID CopyZeroPageToDst (UINT64 DstPfn)
+{
+        UINT64 TargetAddr = DstPfn << PAGE_SHIFT;
+
+        if (CheckFreeRanges (TargetAddr)) {
+                CopyPage (ZeroPagePfn, DstPfn);
+        } else {
+                KernIntf->Mutex->MutexAcquire (mx);
+                UpdateBounceEntry (DstPfn, ZeroPagePfn);
+                KernIntf->Mutex->MutexRelease (mx);
+        }
+}
+
 static VOID PrintImageKernelDetails (struct SwsuspInfo *info)
 {
         /*TODO: implement printing of kernel details here*/
@@ -918,6 +934,16 @@ static INT32 ReadDataPages (VOID *Arg)
                         /* skip swap_map pages */
                         if (!CheckSwapMapPage (Info->Offset)) {
                                 DstPfn = Info->KernelPfnIndexes[PfnIndex++];
+                                /* When generating a hibernation snapshot image,
+                                 * pages in memory that consist entirely of
+                                 * zeros are excluded from the snapshot.
+                                 * To identify such zero pages, the MSB of the
+                                 * PFN is set.
+                                 */
+                                if (IS_ZERO_PFN (DstPfn)) {
+                                        CopyZeroPageToDst (DstPfn);
+                                        continue;
+                                }
                                 PendingPages--;
 #if HIBERNATION_SUPPORT_AES
                                 if (DecryptPage (
@@ -1347,6 +1373,7 @@ static INT32 RestoreSnapshotImage (VOID)
         for (Iter1 = 0; Iter1 < NUM_SILVER_CORES; Iter1++) {
                 INT32 Iter2;
                 UINT64 Count = 0;
+                UINT64 DstPfn_z;
                 gBS->CopyMem (Info[Iter1].Iv, IvGlb, sizeof (Dp->Iv));
                 Info[Iter1].Offset = Offset;
                 Info[Iter1].Authtags = Authtags;
@@ -1356,16 +1383,22 @@ static INT32 RestoreSnapshotImage (VOID)
                         if (CheckSwapMapPage (Offset)) {
                                 Offset++;
                         }
-                        Offset++;
+                        DstPfn_z = KernelPfnIndexes[PfnOffset];
+                        if (IS_ZERO_PFN (DstPfn_z)) {
+                            Iter2--;
+                        } else {
+                            Offset++;
+                            Authtags += Dp->Authsize;
+                            Count++;
+                        }
                         PfnOffset++;
-                        Authtags += Dp->Authsize;
-                        Count++;
                 }
                 IncrementIV (IvGlb, sizeof (Dp->Iv), Count);
         }
         for (Iter1 = NUM_SILVER_CORES; Iter1 < NUM_CORES - 1; Iter1++) {
                 INT32 Iter2;
                 UINT64 Count = 0;
+                UINT64 DstPfn_z;
                 gBS->CopyMem (Info[Iter1].Iv, IvGlb, sizeof (Dp->Iv));
                 Info[Iter1].Offset = Offset;
                 Info[Iter1].Authtags = Authtags;
@@ -1375,10 +1408,15 @@ static INT32 RestoreSnapshotImage (VOID)
                         if (CheckSwapMapPage (Offset)) {
                                 Offset++;
                         }
-                        Offset++;
+                        DstPfn_z = KernelPfnIndexes[PfnOffset];
+                        if (IS_ZERO_PFN (DstPfn_z)) {
+                            Iter2--;
+                        } else {
+                            Offset++;
+                            Authtags += Dp->Authsize;
+                            Count++;
+                        }
                         PfnOffset++;
-                        Authtags += Dp->Authsize;
-                        Count++;
                 }
                 IncrementIV (IvGlb, sizeof (Dp->Iv), Count);
         }
@@ -1389,7 +1427,6 @@ static INT32 RestoreSnapshotImage (VOID)
         Info[Iter1].NumPages = NrCopyPages - (4 * NUM_PAGES_PER_SILVER_CORE) -
                            (3 * NUM_PAGES_PER_GOLD_CORE);
         Info[Iter1].KernelPfnIndexes = &KernelPfnIndexes[PfnOffset];
-
         for (Iter1 = 0; Iter1 < NUM_CORES; Iter1++) {
                 Info[Iter1].DiskReadBuffer = AllocatePages (DISK_BUFFER_PAGES);
                 if (!Info[Iter1].DiskReadBuffer) {
@@ -1419,7 +1456,6 @@ static INT32 RestoreSnapshotImage (VOID)
                 KernIntf->Thread->ThreadSetPinnedCpu (T[Iter1], Iter1);
                 AllocateUnSafeStackPtr (T[Iter1]);
         }
-
         mx = KernIntf->Mutex->MutexInit (1);
 
         printf ("Mapping Regions:\n");
@@ -1449,6 +1485,10 @@ static INT32 RestoreSnapshotImage (VOID)
         Bti->FirstTable = (struct BounceTable *)
                                 (GetUnusedPfn () << PAGE_SHIFT);
         Bti->CurTable = Bti->FirstTable;
+
+        /* assign unused pfn to zero page pfn */
+        ZeroPagePfn = GetUnusedPfn ();
+        SetMem ((UINT64*)(ZeroPagePfn << PAGE_SHIFT), PAGE_SIZE, 0);
 
         for (Iter1 = NUM_CORES - 1; Iter1 >= 0; Iter1--) {
                 Ret = KernIntf->Thread->ThreadResume (T[Iter1]);
