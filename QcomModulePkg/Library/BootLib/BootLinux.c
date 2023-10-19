@@ -1792,10 +1792,6 @@ BootLinux (BootInfo *Info)
     goto Exit;
   }
 
-  if (IsVmEnabled ()) {
-    DisableHypUartUsageForLogging ();
-  }
-
 #ifdef DISABLE_KERNEL_PROTOCOL
   PreparePlatformHardware ();
 #else
