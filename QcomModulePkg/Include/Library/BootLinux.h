@@ -222,6 +222,7 @@ typedef struct BootLinuxParamlist {
   UINT64 PvmFwLoadAddr;
   UINT64 *HypDtboBaseAddr;
   UINT32 NumHypDtbos;
+  VOID *AvfDpDtboBaseAddr;
 
  //Get the below fields info from the bootimage header
   UINT32 PageSize;

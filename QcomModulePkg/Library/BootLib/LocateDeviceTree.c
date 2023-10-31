@@ -29,7 +29,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -1183,6 +1183,133 @@ GetOvrdDtb ( VOID **DtboImgBuffer)
 err:
   if (*DtboImgBuffer) {
     FreePool (*DtboImgBuffer);
+  }
+  return Status;
+}
+
+/*
+  Function to extract Dtb from DP dtbo partition.
+*/
+EFI_STATUS
+GetAvfDpDtbo ( VOID **DtboImgBuffer)
+{
+  struct DtboTableHdr *DtboTableHdr = NULL;
+  struct DtboTableEntry *DtboTableEntry = NULL;
+  VOID *DpDtbo = NULL;
+  VOID *DpmPartitionBuffer = NULL;
+  UINT32 DtboTableEntriesCount = 0;
+  UINT32 DtboTableEntryOffset = 0;
+  EFI_STATUS Status = EFI_SUCCESS;
+  UINT32 DpmPartitionSz = 0;
+  UINT32 DpDtboSz = 0;
+  CHAR16 PtnName[MAX_GPT_NAME_SIZE] = {0};
+
+  /** Get size of partition **/
+  UINT32 BlkIOAttrib = 0;
+  PartiSelectFilter HandleFilter;
+  UINT32 MaxHandles = 1;
+  EFI_BLOCK_IO_PROTOCOL *BlockIo = NULL;
+  HandleInfo HandleInfoList[1];
+
+  GUARD ( StrnCpyS (PtnName,
+              MAX_GPT_NAME_SIZE,
+              (CONST CHAR16 *)L"dpm",
+              (UINTN)StrLen (L"dpm")));
+
+  BlkIOAttrib |= BLK_IO_SEL_PARTITIONED_MBR;
+  BlkIOAttrib |= BLK_IO_SEL_PARTITIONED_GPT;
+  BlkIOAttrib |= BLK_IO_SEL_MEDIA_TYPE_NON_REMOVABLE;
+  BlkIOAttrib |= BLK_IO_SEL_MATCH_PARTITION_LABEL;
+
+  HandleFilter.RootDeviceType = NULL;
+  HandleFilter.PartitionLabel = NULL;
+  HandleFilter.VolumeName = NULL;
+  HandleFilter.PartitionLabel = PtnName;
+
+  Status =
+     GetBlkIOHandles (BlkIOAttrib, &HandleFilter, HandleInfoList, &MaxHandles);
+  if (Status != EFI_SUCCESS ||
+       MaxHandles != 1) {
+    DEBUG ((EFI_D_ERROR,
+            "DP DTB: GetBlkIOHandles failed loading DP dtbo: %r\n",
+            Status));
+    Status = EFI_LOAD_ERROR;
+    goto err;
+  }
+
+  BlockIo = HandleInfoList[0].BlkIo;
+  DpmPartitionSz = GetPartitionSize (BlockIo);
+  if (!DpmPartitionSz) {
+    Status = EFI_BAD_BUFFER_SIZE;
+    goto err;
+  }
+  DpmPartitionBuffer = AllocateZeroPool (DpmPartitionSz);
+  if (DpmPartitionBuffer == NULL) {
+    DEBUG ((EFI_D_ERROR, "DP DTB: partition buffer allocation failure\n"));
+    Status = EFI_OUT_OF_RESOURCES;
+    goto err;
+  }
+
+  /** Load image. **/
+  Status = LoadImageFromPartition (DpmPartitionBuffer,
+                                   &DpmPartitionSz,
+                                   PtnName);
+  if (Status != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "DP DTB: partition buffer loading falied\n"));
+    goto err;
+  }
+
+  DtboTableHdr = (struct DtboTableHdr *)DpmPartitionBuffer;
+  DtboTableEntryOffset = fdt32_to_cpu (DtboTableHdr->DtEntryOffset);
+  if (CHECK_ADD64 ((UINT64)DpmPartitionBuffer, DtboTableEntryOffset)) {
+    DEBUG ((EFI_D_ERROR,
+                "DP DTB: Integer overflow detected dtbo address\n"));
+    Status = EFI_INVALID_PARAMETER;
+    goto err;
+  }
+
+  DtboTableEntry =
+      (struct DtboTableEntry *)(DpmPartitionBuffer + DtboTableEntryOffset);
+  if (!DtboTableEntry) {
+    DEBUG ((EFI_D_ERROR, "DP DTB: No proper DT table\n"));
+    Status = EFI_INVALID_PARAMETER;
+    goto err;
+  }
+
+  // Support only one dtb in DP dtbo image.
+  DtboTableEntriesCount = fdt32_to_cpu (DtboTableHdr->DtEntryCount);
+  if (DtboTableEntriesCount > 1) {
+    DEBUG ((EFI_D_ERROR,
+             "DP DTB: Exceeding maximum supported DTB count in image\n"));
+    Status = EFI_INVALID_PARAMETER;
+    goto err;
+  }
+
+  DpDtbo = DpmPartitionBuffer + fdt32_to_cpu (DtboTableEntry->DtOffset);
+  if (fdt_check_header (DpDtbo) ||
+      fdt_check_header_ext (DpDtbo)) {
+    DEBUG ((EFI_D_ERROR, "DP DTB: No Valid DTB in image\n"));
+    Status = EFI_INVALID_PARAMETER;
+    goto err;
+  }
+  DpDtboSz = fdt_totalsize (DpDtbo);
+
+  DpDtbo = AllocateZeroPool (DpDtboSz);
+  if (DpDtbo) {
+    gBS->CopyMem (DpDtbo,
+                  DpmPartitionBuffer + fdt32_to_cpu (DtboTableEntry->DtOffset),
+                  DpDtboSz);
+  } else {
+    DEBUG ((EFI_D_ERROR, "DP DTB: DTBO buffer allocation failure\n"));
+    Status = EFI_OUT_OF_RESOURCES;
+    goto err;
+  }
+
+  *DtboImgBuffer = DpDtbo;
+
+err:
+  if (DpmPartitionBuffer) {
+    FreePool (DpmPartitionBuffer);
   }
   return Status;
 }
