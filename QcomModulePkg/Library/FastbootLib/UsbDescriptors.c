@@ -290,6 +290,8 @@ BuildDefaultDescriptors (OUT USB_DEVICE_DESCRIPTOR **DevDesc,
   CHAR8 Str_UUID[UUID_STR_LEN];
   UINT32 i;
   EFI_STATUS Status;
+  VOID **TempDescs;
+  VOID **TempSSDescs;
 
   Status = BoardSerialNum (Str_UUID, sizeof (Str_UUID));
   if (Status != EFI_SUCCESS) {
@@ -325,25 +327,27 @@ BuildDefaultDescriptors (OUT USB_DEVICE_DESCRIPTOR **DevDesc,
   *SSDevDesc = &SSDeviceDescriptor;
   NumCfg = DeviceDescriptor.NumConfigurations;
 
-  *Descriptors = AllocateZeroPool (NumCfg * sizeof (struct _CfgDescTree *));
-  if (*Descriptors == NULL) {
+  TempDescs = AllocateZeroPool (NumCfg * sizeof (struct _CfgDescTree *));
+  if (TempDescs == NULL) {
     DEBUG (
         (EFI_D_ERROR, "Error Allocating memory for HS config descriptors\n"));
     return;
   }
 
-  *SSDescriptors = AllocateZeroPool (NumCfg * sizeof (struct _SSCfgDescTree *));
-  if (*SSDescriptors == NULL) {
+  TempSSDescs = AllocateZeroPool (NumCfg * sizeof (struct _SSCfgDescTree *));
+  if (TempSSDescs == NULL) {
     DEBUG (
         (EFI_D_ERROR, "Error Allocating memory for SS config descriptors\n"));
-    FreePool (*Descriptors);
-    *Descriptors = NULL;
+    FreePool (TempDescs);
+    TempDescs = NULL;
     return;
   }
   for (Index = 0; Index < NumCfg; Index++) {
-    Descriptors[Index] = &TotalConfigDescriptor;
+    TempDescs[Index] = &TotalConfigDescriptor;
   }
   for (Index = 0; Index < NumCfg; Index++) {
-    SSDescriptors[Index] = &TotalSSConfigDescriptor;
+    TempSSDescs[Index] = &TotalSSConfigDescriptor;
   }
+  *Descriptors = TempDescs;
+  *SSDescriptors = TempSSDescs;
 }
