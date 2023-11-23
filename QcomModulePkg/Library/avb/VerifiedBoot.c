@@ -1602,8 +1602,10 @@ LoadImageAndAuthVB2 (BootInfo *Info, BOOLEAN HibernationResume,
 
     Result = avb_slot_verify (Ops, (CONST CHAR8 *CONST *)RequestedPartition,
                 SlotSuffix, VerifyFlags, VerityFlags, &SlotData);
-    FreePages (ImageHdrBuffer,
-               ALIGN_PAGES (BOOT_IMG_MAX_PAGE_SIZE, ALIGNMENT_MASK_4KB));
+    if (ImageHdrBuffer) {
+       FreePages (ImageHdrBuffer,
+                  ALIGN_PAGES (BOOT_IMG_MAX_PAGE_SIZE, ALIGNMENT_MASK_4KB));
+    }
   }
 
   if (SlotData == NULL) {
