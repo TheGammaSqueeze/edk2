@@ -1410,7 +1410,7 @@ LoadImageAndAuthVB2 (BootInfo *Info, BOOLEAN HibernationResume,
       AllowVerificationError ? AVB_SLOT_VERIFY_FLAGS_ALLOW_VERIFICATION_ERROR
                              : AVB_SLOT_VERIFY_FLAGS_NONE;
   AvbHashtreeErrorMode VerityFlags =
-      AVB_HASHTREE_ERROR_MODE_PANIC;
+      AVB_HASHTREE_ERROR_MODE_MANAGED_RESTART_AND_EIO;
   CHAR8 Digest[AVB_SHA256_DIGEST_SIZE];
   BOOLEAN UpdateRollback = FALSE;
   BOOLEAN UpdateRollbackIndex = FALSE;
