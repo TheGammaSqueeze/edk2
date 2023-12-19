@@ -227,6 +227,9 @@
   !if $(REMOVE_CARVEOUT_REGION) == 1
       GCC:*_*_*_CC_FLAGS = -DREMOVE_CARVEOUT_REGION
   !endif
+  !if $(QSPA_BOOTCONFIG_ENABLE) ==1
+      GCC:*_*_*_CC_FLAGS = -DQSPA_BOOTCONFIG_ENABLE
+  !endif
 
 [PcdsFixedAtBuild.common]
 

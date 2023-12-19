@@ -76,6 +76,7 @@
 #include <Protocol/EFIPmicPon.h>
 #include <Protocol/Print2.h>
 #include <Library/EarlyUsbInit.h>
+#include <Library/PartialGoods.h>
 
 #include "AutoGen.h"
 #include "DeviceInfo.h"
@@ -83,6 +84,11 @@
 #include "Recovery.h"
 #include "LECmdLine.h"
 #include "EarlyEthernet.h"
+
+#ifdef QSPA_BOOTCONFIG_ENABLE
+#define MAX_PART_NAME_LEN 40
+STATIC CONST CHAR8 *QSPAPrefix = "androidboot.vendor.qspa.";
+#endif
 
 #define BOOT_CPU_PARAM_LEN 13
 #define SIZE_OF_DELIM 2
@@ -1172,6 +1178,76 @@ ClearBootConfigList (LIST_ENTRY* BootConfigListHead)
   return;
 
 }
+
+#ifdef QSPA_BOOTCONFIG_ENABLE
+STATIC EFI_STATUS
+Update_PartialGoods_Bootconfig (UINT32 HeaderVersion,
+                               UINT32 *CmdLineLen,
+                               UINT32 *BootConfigLen)
+{
+  CHAR8 QSPAPropName[MAX_PART_NAME_LEN] = "\n";
+  CHAR8 *QSPAPropValue;
+  UINT32 PartialGoodsMMValue = 0;
+  EFI_STATUS Status;
+  UINT32 ParamLen = 0;
+  BOOLEAN BootConfigFlag = FALSE;
+
+  EFI_CHIPINFO_PROTOCOL *pChipInfoProtocol;
+  Status = gBS->LocateProtocol (&gEfiChipInfoProtocolGuid, NULL,
+                                (VOID **)&pChipInfoProtocol);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to locate ChipInfo protocol.\n"));
+    return Status;
+  }
+
+  Status = ReadMMPartialGoods (pChipInfoProtocol, &PartialGoodsMMValue);
+  if (Status == EFI_UNSUPPORTED) {
+    return EFI_SUCCESS;
+  }
+
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_ERROR, "Failed to get PartialGoodsMMValue.\n"));
+    return Status;
+  }
+
+  if (ARRAY_SIZE (ChipInfoPartTypeStr) < EFICHIPINFO_NUM_PARTS) {
+    DEBUG ((EFI_D_ERROR, "QSPA property missing for some parts.\n"));
+  }
+
+  for (UINT32 Iter = EFICHIPINFO_PART_UNKNOWN + 1;
+       Iter < MIN (EFICHIPINFO_NUM_PARTS, ARRAY_SIZE (ChipInfoPartTypeStr));
+       Iter++) {
+    if (PartialGoodsMMValue & (1 << Iter)) {
+      QSPAPropValue = "1";
+    }
+    else {
+      QSPAPropValue = "0";
+    }
+    AsciiSPrint (QSPAPropName, MAX_PART_NAME_LEN, "%a%a=", QSPAPrefix,
+                 ChipInfoPartTypeStr[Iter]);
+    ParamLen = AsciiStrLen (QSPAPropName);
+    BootConfigFlag = IsAndroidBootParam (QSPAPropName, ParamLen, HeaderVersion);
+    if (BootConfigFlag) {
+      ADD_PARAM_LEN (BootConfigFlag, ParamLen, *CmdLineLen, *BootConfigLen);
+      ADD_PARAM_LEN (BootConfigFlag, AsciiStrLen (QSPAPropValue), *CmdLineLen,
+                     *BootConfigLen);
+      AddtoBootConfigList (BootConfigFlag, QSPAPropName, QSPAPropValue,
+                           BootConfigListHead, ParamLen,
+                           AsciiStrLen (QSPAPropValue));
+    }
+  }
+
+  return Status;
+}
+#else
+STATIC EFI_STATUS
+Update_PartialGoods_Bootconfig (UINT32 HeaderVersion,
+                                UINT32 *CmdLineLen,
+                                UINT32 *BootConfigLen)
+{
+  return EFI_SUCCESS;
+}
+#endif
 /*Update command line: appends boot information to the original commandline
  *that is taken from boot image header*/
 EFI_STATUS
@@ -1595,6 +1671,11 @@ UpdateCmdLine (BootParamlist *BootParamlistPtr,
     }
   } else {
     Param.MemOffAmt = NULL;
+  }
+
+  if (Update_PartialGoods_Bootconfig (HeaderVersion, &CmdLineLen,
+      &BootConfigLen) != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "Failed to update PartialGoods_Bootconfig.\n"));
   }
 
   if (SilentMode == SILENT_MODE) {
