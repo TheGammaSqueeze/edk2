@@ -99,6 +99,7 @@ STATIC BOOLEAN BootIntoFastboot = FALSE;
 STATIC BOOLEAN BootIntoRecovery = FALSE;
 UINT64 FlashlessBootImageAddr = 0;
 STATIC DeviceInfo DevInfo;
+STATIC UINT32 BootDeviceType = EFI_MAX_FLASH_TYPE;
 
 // This function is used to Deactivate MDTP by entering recovery UI
 STATIC EFI_STATUS MdtpDisable (VOID)
@@ -215,6 +216,27 @@ BOOLEAN IsABRetryCountUpdateRequired (VOID)
 }
 
 /**
+  This function is used to check for boot type:
+    FlashlessBoot, NetworkBoot, Fastboot.
+ **/
+
+UINT32 GetBootDeviceType ()
+{
+  UINTN  DataSize = sizeof (BootDeviceType);
+  EFI_STATUS Status = EFI_SUCCESS;
+
+  if (BootDeviceType == EFI_MAX_FLASH_TYPE) {
+    Status = gRT->GetVariable (L"SharedImemBootCfgVal",
+               &gQcomTokenSpaceGuid, NULL, &DataSize, &BootDeviceType);
+    if (Status != EFI_SUCCESS) {
+        DEBUG ((EFI_D_ERROR, "Failed to get boot device type, %r\n", Status));
+    }
+  }
+
+  return BootDeviceType;
+}
+
+/**
   Linux Loader Application EntryPoint
 
   @param[in] ImageHandle    The firmware allocated handle for the EFI image.
@@ -229,7 +251,6 @@ EFI_STATUS EFIAPI  __attribute__ ( (no_sanitize ("safe-stack")))
 LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
 {
   EFI_STATUS Status;
-
   UINT32 BootReason = NORMAL_MODE;
   UINT32 KeyPressed = SCAN_NULL;
   /* SilentMode Boot */

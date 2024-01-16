@@ -398,6 +398,13 @@ CheckRootDeviceType (VOID)
   STATIC MemCardType Type = UNKNOWN;
   MEM_CARD_INFO CardInfoData;
   EFI_MEM_CARDINFO_PROTOCOL *CardInfo;
+  /*For network boot, avoid uefi call to get the root device type
+  and return UNKNOWN. */
+  UINT32 Val = GetBootDeviceType ();
+
+  if (Val == EFI_EMMC_NETWORK_FLASH_TYPE) {
+    return UNKNOWN;
+  }
 
   if (Type == UNKNOWN) {
     Status = gBS->LocateProtocol (&gEfiMemCardInfoProtocolGuid, NULL,
