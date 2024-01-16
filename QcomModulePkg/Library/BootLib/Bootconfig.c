@@ -102,9 +102,7 @@ static BOOLEAN IsTrailerPresent (UINT64 BootconfigEndAddr)
     (CHAR8*) (BootconfigEndAddr - V4_BOOTCONFIG_MAGIC_SIZE),
     V4_BOOTCONFIG_MAGIC_SIZE);
 
-  if ( TrailMagicBuffer[V4_BOOTCONFIG_MAGIC_SIZE] != '\0') {
-    TrailMagicBuffer[V4_BOOTCONFIG_MAGIC_SIZE] = '\0';
-  }
+  TrailMagicBuffer[V4_BOOTCONFIG_MAGIC_SIZE] = '\0';
   return !AsciiStrnCmp ((CHAR8*)(TrailMagicBuffer),
             Magic, V4_BOOTCONFIG_MAGIC_SIZE);
 }
