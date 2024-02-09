@@ -565,26 +565,17 @@ static struct PartialGoodsWithLabel PartialGoodsMmTypeWithLabel[] = {
     {"video_cc_mvs0_gdsc", "status", "no"}},
     {BIT (EFICHIPINFO_PART_VIDEO),
     {"video_cc_mvs0c_gdsc", "status", "no"}},
-    {BIT (EFICHIPINFO_PART_VIDEO),
-    {"video_cc_mvs1_gdsc", "status", "no"}},
-    {BIT (EFICHIPINFO_PART_VIDEO),
-    {"video_cc_mvs1c_gdsc", "status", "no"}},
-    {BIT (EFICHIPINFO_PART_VIDEO),
+    {(BIT (EFICHIPINFO_PART_VIDEO)
+     | BIT (EFICHIPINFO_PART_EVA)),
     {"videocc", "status", "no"}},
     {BIT (EFICHIPINFO_PART_VIDEO),
     {"gcc_venus_gdsc", "status", "no"}},
     {BIT (EFICHIPINFO_PART_VIDEO),
     {"gcc_vcodec0_gdsc", "status", "no"}},
     {BIT (EFICHIPINFO_PART_EVA),
-    {"video_cc_mvs0_gdsc", "status", "no"}},
-    {BIT (EFICHIPINFO_PART_EVA),
-    {"video_cc_mvs0c_gdsc", "status", "no"}},
-    {BIT (EFICHIPINFO_PART_EVA),
     {"video_cc_mvs1_gdsc", "status", "no"}},
     {BIT (EFICHIPINFO_PART_EVA),
     {"video_cc_mvs1c_gdsc", "status", "no"}},
-    {BIT (EFICHIPINFO_PART_EVA),
-    {"videocc", "status", "no"}},
 };
 
 STATIC EFI_STATUS
@@ -717,6 +708,13 @@ FindLabelAndUpdateProperty (VOID *fdt,
   for (i = 0; i < TableSz; i++, Table++) {
     if (!(Value & Table->Val)) {
       continue;
+    }
+
+    if (Table->Val == (BIT (EFICHIPINFO_PART_VIDEO) |
+                       BIT (EFICHIPINFO_PART_EVA))) {
+      if (!((Value & BIT (EFICHIPINFO_PART_VIDEO)) &&
+            (Value & BIT (EFICHIPINFO_PART_EVA))))
+          continue;
     }
 
     LabelHandle = &(Table->LabelRef);
