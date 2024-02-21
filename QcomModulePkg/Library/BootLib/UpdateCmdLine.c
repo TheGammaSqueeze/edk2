@@ -33,7 +33,7 @@
 /*
   * Changes from Qualcomm Innovation Center are provided under the following
   * license:
-  * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+  * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
   *
   * Redistribution and use in source and binary forms, with or without
   * modification, are permitted (subject to the limitations in the disclaimer
@@ -524,6 +524,8 @@ GetSystemPath (CHAR8 **SysPath, BOOLEAN MultiSlotBoot, BOOLEAN BootIntoRecovery,
                  Key,
                  LunCharMapping[Lun],
                  GetPartitionIdxInLun (PartitionName, Lun));
+  } else if (!AsciiStrCmp ("NVME", RootDevStr)) {
+    AsciiSPrint (*SysPath, MAX_PATH_SIZE, " %a=/dev/nvme0n1p%d", Key, Index);
   } else {
     DEBUG ((EFI_D_ERROR, "Unknown Device type\n"));
     FreePool (*SysPath);
@@ -621,6 +623,8 @@ GetSystemPathByPname (CHAR8 **SysPath, BOOLEAN MultiSlotBoot,
                  Key,
                  LunCharMapping[Lun],
                  GetPartitionIdxInLun (PartitionName, Lun));
+  } else if (!AsciiStrCmp ("NVME", RootDevStr)) {
+    AsciiSPrint (*SysPath, MAX_PATH_SIZE, " %a=/dev/nvme0n1p%d", Key, Index);
   } else {
     DEBUG ((EFI_D_ERROR, "GetSystemPathByPname: Unknown Device type\n"));
     FreePool (*SysPath);

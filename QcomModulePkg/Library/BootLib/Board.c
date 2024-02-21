@@ -76,13 +76,18 @@
 STATIC struct BoardInfo platform_board_info;
 
 STATIC CONST CHAR8 *DeviceType[] = {
-        [EMMC] = "EMMC", [UFS] = "UFS", [NAND] = "NAND", [UNKNOWN] = "Unknown",
+        [EMMC] = "EMMC",
+        [UFS] = "UFS",
+        [NAND] = "NAND",
+        [NVME] = "NVME",
+        [UNKNOWN] = "Unknown",
 };
 
 STATIC CONST UINT32 DeviceTypeMedia[] = {
         [EMMC] = SIGNATURE_32 ('e', 'm', 'm', 'c'),
         [UFS] = SIGNATURE_32 ('u', 'f', 's', ' '),
         [NAND] = SIGNATURE_32 ('n', 'a', 'n', 'd'),
+        [NVME] = SIGNATURE_32 ('n', 'v' , 'm', 'e'),
 };
 
 RamPartitionEntry *RamPartitionEntries = NULL;
@@ -329,7 +334,7 @@ GetPmicInfo (UINT32 PmicDeviceIndex,
  @param[in, out] MaxHandles  : On input, max number of handle structures
                                the buffer can hold, On output, the number
                                of handle structures returned.
- @param[in]      Type        : Device Type : UNKNOWN, UFS, EMMC, NAND
+ @param[in]      Type        : Device Type : UNKNOWN, UFS, EMMC, NAND, NVME
  @retval         EFI_STATUS  : Return Success on getting Handler Info
  **/
 
@@ -355,6 +360,9 @@ GetDeviceHandleInfo (VOID *HndlInfo, UINT32 MaxHandles, MemCardType Type)
   case NAND:
     HandleFilter.RootDeviceType = &gEfiNandUserPartitionGuid;
     break;
+  case NVME:
+    HandleFilter.RootDeviceType = &gEfiNvme0Guid;
+    break;
   case UNKNOWN:
     DEBUG ((EFI_D_ERROR, "Device type unknown\n"));
     return Status;
@@ -372,7 +380,7 @@ GetDeviceHandleInfo (VOID *HndlInfo, UINT32 MaxHandles, MemCardType Type)
 
 /**
  Return a device type
- @retval         Device type : UNKNOWN | UFS | EMMC | NAND
+ @retval         Device type : UNKNOWN | UFS | EMMC | NAND | NVME
  **/
 STATIC UINT32
 GetCompatibleRootDeviceType (VOID)
@@ -394,7 +402,8 @@ GetCompatibleRootDeviceType (VOID)
 
 /**
  Return a device type
- @retval         Device type : UNKNOWN | UFS | EMMC | NAND, default is UNKNOWN
+ @retval         Device type : UNKNOWN | UFS | EMMC | NAND | NVME,
+                               default is UNKNOWN
  **/
 
 MemCardType
@@ -420,7 +429,6 @@ CheckRootDeviceType (VOID)
       Status = CardInfo->GetCardInfo (CardInfo, &CardInfoData);
 
       if (!EFI_ERROR (Status)) {
-
         if (!AsciiStrnCmp ((CHAR8 *)CardInfoData.card_type, "UFS",
                            AsciiStrLen ("UFS"))) {
           Type = UFS;
@@ -430,6 +438,9 @@ CheckRootDeviceType (VOID)
         } else if (!AsciiStrnCmp ((CHAR8 *)CardInfoData.card_type, "NAND",
                                   AsciiStrLen ("NAND"))) {
           Type = NAND;
+        } else if (!AsciiStrnCmp ((CHAR8 *)CardInfoData.card_type, "NVME",
+                                  AsciiStrLen ("NVME"))) {
+          Type = NVME;
         } else {
           Type = GetCompatibleRootDeviceType ();
         }
