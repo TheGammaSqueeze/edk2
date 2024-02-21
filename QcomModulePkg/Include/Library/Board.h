@@ -123,6 +123,7 @@ struct BoardInfo {
   CHAR8 ChipBaseBand[EFICHIPINFO_MAX_ID_LENGTH];
   EFIChipInfoVersionType ChipVersion;
   EFIChipInfoFoundryIdType FoundryId;
+  UINT32 PackageId;
   UINT32 HlosSubType;
 };
 
@@ -143,6 +144,7 @@ UINT32 BoardPlatformRawChipId (VOID);
 CHAR8 *BoardPlatformChipBaseBand (VOID);
 EFIChipInfoVersionType BoardPlatformChipVersion (VOID);
 EFIChipInfoFoundryIdType BoardPlatformFoundryId (VOID);
+UINT32 BoardPlatformPackageId (VOID);
 EFI_PLATFORMINFO_PLATFORM_TYPE BoardPlatformType (VOID);
 UINT32 BoardPlatformVersion (VOID);
 UINT32 BoardPlatformSubType (VOID);

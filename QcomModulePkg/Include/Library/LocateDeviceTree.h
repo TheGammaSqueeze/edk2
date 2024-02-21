@@ -29,7 +29,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -97,6 +97,7 @@
 #define DTBO_TABLE_MAGIC 0xD7B7AB1E
 #define DTBO_CUSTOM_MAX 4
 #define PLATFORM_FOUNDRY_SHIFT 16
+#define PLATFORM_PACKAGE_SHIFT 24
 #define DTBO_MAX_SIZE_ALLOWED (24 * 1024 * 1024)
 #define SOC_MASK (0xffff)
 #define VARIANT_MASK (0x000000ff)
@@ -107,6 +108,7 @@
 #define PMIC_SHIFT_IDX (2)
 #define PLATFORM_SUBTYPE_SHIFT_ID (0x18)
 #define FOUNDRY_ID_MASK (0x00ff0000)
+#define PACKAGE_ID_MASK (0x03000000)
 #define PLATFORM_SUBTYPE_MASK (0x000000ff)
 #define OEM_ID_MASK (0xff000000)
 #define OEM_ID_SHIFT 24
@@ -171,6 +173,8 @@ typedef enum {
   DDR_MATCH,
   VARIANT_MATCH,
   SOC_MATCH,
+  PACKAGE_DEFAULT_MATCH,
+  PACKAGE_EXACT_MATCH,
   MAX_MATCH,
 } DTMATCH_PARAMS;
 
@@ -185,7 +189,7 @@ typedef enum {
    BIT (PMIC_MATCH_EXACT_MODEL_IDX9) | BIT (PMIC_MATCH_EXACT_MODEL_IDXA) | \
    BIT (PMIC_MATCH_EXACT_MODEL_IDXB) | BIT (PMIC_MATCH_EXACT_MODEL_IDXC) | \
    BIT (PMIC_MATCH_EXACT_MODEL_IDXD) | BIT (PMIC_MATCH_EXACT_MODEL_IDXE) | \
-   BIT (PMIC_MATCH_EXACT_MODEL_IDXF))
+   BIT (PMIC_MATCH_EXACT_MODEL_IDXF) | BIT (PACKAGE_EXACT_MATCH))
 
 typedef enum {
   PMIC_IDX0,
@@ -206,6 +210,7 @@ typedef struct DtInfo {
   UINT32 DtPlatformId;
   UINT32 DtSocRev;
   UINT32 DtFoundryId;
+  UINT32 DtPackageId;
   UINT32 DtVariantId;
   UINT32 DtVariantMajor;
   UINT32 DtVariantMinor;

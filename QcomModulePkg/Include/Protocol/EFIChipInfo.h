@@ -29,7 +29,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -79,9 +79,10 @@ typedef struct _EFI_CHIPINFO_PROTOCOL EFI_CHIPINFO_PROTOCOL;
 #define EFI_CHIPINFO_PROTOCOL_REVISION_3  0x0000000000010003
 #define EFI_CHIPINFO_PROTOCOL_REVISION_4  0x0000000000010004
 #define EFI_CHIPINFO_PROTOCOL_REVISION_5  0x0000000000010005
+#define EFI_CHIPINFO_PROTOCOL_REVISION_6  0x0000000000010006
 
-#define EFI_CHIPINFO_PROTOCOL_REVISION EFI_CHIPINFO_PROTOCOL_REVISION_5
-/** @} */ /* end_addtogroup efi_chipInfo_constants */
+#define EFI_CHIPINFO_PROTOCOL_REVISION EFI_CHIPINFO_PROTOCOL_REVISION_6
+
 
 /*  Protocol GUID definition */
 /** @ingroup efi_chipInfo_protocol */
@@ -658,6 +659,28 @@ EFI_STATUS
   OUT UINT32 *pnMask
   );
 
+/* ============================================================================
+**  Function : EFI_ChipInfo_GetRawPackageType
+** ============================================================================
+*/
+/** @ingroup efi_chipInfo_protocol_apis
+ * @par Summary
+ * Get the raw package type value.
+ *
+ * @param[in]   This          Pointer to the EFI_CHIPINFO_PROTOCOL instance
+ * @param[out]  pnVal         Raw package type value
+ *
+ * @return
+ * EFI_SUCCESS        -- Function completed successfully \n
+ * EFI_PROTOCOL_ERROR -- Other error occured during the operation
+ */
+typedef
+EFI_STATUS
+(EFIAPI *EFI_CHIPINFO_GETRAWPACKAGETYPE)(
+  IN EFI_CHIPINFO_PROTOCOL *This,
+  OUT UINT32 *pnVal
+  );
+
 /*===========================================================================
   PROTOCOL INTERFACE
 ===========================================================================*/
@@ -692,6 +715,7 @@ struct _EFI_CHIPINFO_PROTOCOL {
   EFI_CHIPINFO_GETDISABLEDFEATURES GetDisabledFeatures;
   EFI_CHIPINFO_ISPARTDISABLED IsPartDisabled;
   EFI_CHIPINFO_GETDISABLEDCPUS GetDisabledCPUs;
+   EFI_CHIPINFO_GETRAWPACKAGETYPE GetRawPackageType;
 };
 
 #endif /* __EFICHIPINFO_H__ */

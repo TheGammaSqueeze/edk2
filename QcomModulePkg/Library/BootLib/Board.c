@@ -236,6 +236,15 @@ GetChipInfo (struct BoardInfo *platform_board_info,
                                             &platform_board_info->FoundryId);
   if (EFI_ERROR (Status))
     return Status;
+  if (pChipInfoProtocol->Revision >= EFI_CHIPINFO_VERSION (1, 6)) {
+    Status = pChipInfoProtocol->GetRawPackageType (
+        pChipInfoProtocol, &platform_board_info->PackageId);
+    if (EFI_ERROR (Status)) {
+      platform_board_info->PackageId = 0;
+    }
+  } else {
+    platform_board_info->PackageId = 0;
+  }
   Status = pChipInfoProtocol->GetModemSupport (
       pChipInfoProtocol, ModemType);
   if (EFI_ERROR (Status))
@@ -783,6 +792,11 @@ EFIChipInfoVersionType BoardPlatformChipVersion (VOID)
 EFIChipInfoFoundryIdType BoardPlatformFoundryId (VOID)
 {
   return platform_board_info.FoundryId;
+}
+
+UINT32 BoardPlatformPackageId (VOID)
+{
+  return platform_board_info.PackageId;
 }
 
 CHAR8 *BoardPlatformChipBaseBand (VOID)
