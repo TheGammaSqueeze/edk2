@@ -230,6 +230,10 @@
   !if $(QSPA_BOOTCONFIG_ENABLE) ==1
       GCC:*_*_*_CC_FLAGS = -DQSPA_BOOTCONFIG_ENABLE
   !endif
+  !if $(AUTO_VIRT_ABL)
+      GCC:*_*_*_CC_FLAGS = -DAUTO_VIRT_ABL
+  !endif
+
 
 [PcdsFixedAtBuild.common]
 
