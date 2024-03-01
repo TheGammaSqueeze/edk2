@@ -94,6 +94,7 @@
 	DebugPrintErrorLevelLib
 	FdtLib
 	MemoryAllocationLib
+	BootLib
 
 
 [Guids]
