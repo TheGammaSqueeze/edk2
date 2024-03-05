@@ -194,6 +194,12 @@ EFI_STATUS
 BaseMem (UINT64 *BaseMemory)
 {
   EFI_STATUS Status = EFI_NOT_FOUND;
+#ifdef AUTO_VIRT_ABL
+  UINTN DataSize = 0;
+  DataSize = sizeof (*BaseMemory);
+  Status = gRT->GetVariable ((CHAR16 *)L"MemoryBase", &gQcomTokenSpaceGuid,
+                          NULL, &DataSize, BaseMemory);
+#else
   RamPartitionEntry *RamPartitions = NULL;
   UINT32 NumPartitions = 0;
   UINT64 SmallestBase;
@@ -210,6 +216,7 @@ BaseMem (UINT64 *BaseMemory)
       SmallestBase = RamPartitions[i].Base;
   }
   *BaseMemory = SmallestBase;
+#endif
   DEBUG ((EFI_D_INFO, "Memory Base Address: 0x%x\n", *BaseMemory));
 
   return Status;
