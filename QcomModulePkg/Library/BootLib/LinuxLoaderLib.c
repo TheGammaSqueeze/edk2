@@ -912,7 +912,9 @@ GetBootDevice (CHAR8 *BootDevBuf, UINT32 Len)
   } else if (!AsciiStrnCmp (BootDeviceType, "NVME", AsciiStrLen ("NVME"))) {
     AsciiSPrint (BootDevBuf, Len, "%x.pcie", BootDevAddr);
   } else if (!AsciiStrnCmp (BootDeviceType, "VBLK", AsciiStrLen ("VBLK"))) {
-    AsciiSPrint (BootDevBuf, Len, "%x.virtio", BootDevAddr);
+    DEBUG ((EFI_D_ERROR, "Virtio Block Device is not"
+                         " supported as Boot Device\n"));
+    return EFI_NOT_FOUND;
   } else {
     DEBUG ((EFI_D_ERROR, "Unknown Boot Device type detected \n"));
     return EFI_NOT_FOUND;
