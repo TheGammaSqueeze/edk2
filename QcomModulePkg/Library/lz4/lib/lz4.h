@@ -28,6 +28,10 @@
    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+   Changes from Qualcomm Innovation Center are provided under the following license:
+   Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+   SPDX-License-Identifier: BSD-3-Clause-Clear
+
    You can contact the author at :
     - LZ4 homepage : http://www.lz4.org
     - LZ4 source repository : https://github.com/lz4/lz4
@@ -40,8 +44,7 @@ extern "C" {
 #define LZ4_H_2983827168210
 
 /* --- Dependency --- */
-#include <stddef.h>   /* size_t */
-
+#include <avb/libavb/libavb.h> /* size_t */
 
 /**
   Introduction
@@ -656,7 +659,7 @@ LZ4_attach_dictionary(LZ4_stream_t* workingStream,
 #define LZ4_HASH_SIZE_U32 (1 << LZ4_HASHLOG)       /* required as macro for static allocation */
 
 #if defined(__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */)
-# include <stdint.h>
+#include <avb/libavb/libavb.h>
   typedef  int8_t  LZ4_i8;
   typedef uint8_t  LZ4_byte;
   typedef uint16_t LZ4_u16;
