@@ -76,7 +76,11 @@ platform_dt_absolute_match (struct dt_entry *cur_dt_entry,
 STATIC struct dt_entry *
 platform_dt_match_best (struct dt_entry_node *dt_list);
 
+#ifndef AUTO_VIRT_ABL
 STATIC BOOLEAN DtboNeed = TRUE;
+#else
+STATIC BOOLEAN DtboNeed = FALSE;
+#endif
 
 STATIC INT32 DtboIdx = INVALID_PTN;
 INT32 GetDtboIdx (VOID)
