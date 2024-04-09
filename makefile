@@ -60,6 +60,9 @@ EDK_TOOLS := $(BUILDDIR)/BaseTools
 EDK_TOOLS_BIN := $(EDK_TOOLS)/Source/C/bin
 ABL_FV_IMG := $(BUILD_ROOT)/FV/abl.fv
 ABL_FV_ELF := $(BOOTLOADER_OUT)/../../unsigned_abl.elf
+ifeq ($(AUTO_VIRT_ABL), 1)
+  ABL_FV_EFI := $(BOOTLOADER_OUT)/../../LinuxLoader.efi
+endif
 SHELL:=/bin/bash
 
 EDK_TOOLS_SRC_FILE := $(shell find $(EDK_TOOLS) -name "*" -type f)
@@ -370,6 +373,9 @@ ABL_FV_IMG: $(EDK_TOOLS_PATH_MARK_FILE)
 	-j build_modulepkg.log $*
 
 	cp $(BUILD_ROOT)/FV/FVMAIN_COMPACT.Fv $(ABL_FV_IMG)
+ifeq ($(AUTO_VIRT_ABL), 1)
+	cp $(BUILD_ROOT)/$(ARCHITECTURE)/QcomModulePkg/Application/LinuxLoader/LinuxLoader/$(TARGET)/LinuxLoader.efi $(ABL_FV_EFI)
+endif
 
 $(EDK_TOOLS_GENERATE_CLEAN): $(EDK_TOOLS_PATH_MARK_FILE)
 	@$(MAKEPATH)make -C $(BUILDDIR)/BaseTools/Source/C clean > /dev/null

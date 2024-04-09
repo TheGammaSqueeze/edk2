@@ -62,6 +62,9 @@ def _abl_impl(ctx):
           cp "${{ABL_DEBUG_FILE}}" "${{ABL_IMAGE_DIR}}/LinuxLoader_${{TARGET_BUILD_VARIANT}}.debug"
           cp "${{ABL_OUT_DIR}}/unsigned_abl.elf" "${{ABL_IMAGE_DIR}}/unsigned_abl_${{TARGET_BUILD_VARIANT}}.elf"
         fi
+        if [ "${{AUTO_VIRT_ABL}}" = "1" ]; then
+          cp "${{ABL_OUT_DIR}}/LinuxLoader.efi" "${{ABL_IMAGE_DIR}}/LinuxLoader_${{TARGET_BUILD_VARIANT}}.efi"
+        fi
 
         find "${{ABL_OUT_DIR}}" -type d -name "abl-${{TARGET_BUILD_VARIANT}}" -exec cp -ar {{}} "$ABL_IMAGE_DIR" \\;
       }}
@@ -114,7 +117,11 @@ def _abl_impl(ctx):
       # Copy to bazel output dir
       abs_out_dir="${{PWD}}/{abl_out_dir}"
       mkdir -p "${{abs_out_dir}}"
-      cd "${{ABL_IMAGE_DIR}}" && tar -czf "${{abs_out_dir}}/{abl_out_name}" ./*.elf ./abl-${{TARGET_BUILD_VARIANT}}
+      file_list="./*.elf ./abl-${{TARGET_BUILD_VARIANT}}"
+      if [ "${{AUTO_VIRT_ABL}}" = "1" ]; then
+        file_list+=" ./*.efi"
+      fi
+      cd "${{ABL_IMAGE_DIR}}" && tar -czf "${{abs_out_dir}}/{abl_out_name}" ${{file_list}}
       """.format(
         abl_out_dir = output_files[0].dirname,
         abl_out_name = output_files[0].basename,
