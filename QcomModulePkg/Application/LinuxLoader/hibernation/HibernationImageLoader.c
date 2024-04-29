@@ -27,7 +27,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -1494,6 +1494,7 @@ static INT32 RestoreSnapshotImage (VOID)
                 Ret = KernIntf->Thread->ThreadResume (T[Iter1]);
                 DEBUG ((EFI_D_INFO, "Thread %d created with Status : %d\n",
                         Iter1, Ret));
+                MicroSecondDelay (3000);
         }
 
         for (Iter1 = NUM_CORES - 1; Iter1 >= 0; Iter1--) {
