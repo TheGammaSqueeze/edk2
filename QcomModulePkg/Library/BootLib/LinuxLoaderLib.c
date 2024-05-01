@@ -29,7 +29,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -849,6 +849,8 @@ GetBootDevice (CHAR8 *BootDevBuf, UINT32 Len)
     AsciiSPrint (BootDevBuf, Len, "%x.ufshc", BootDevAddr);
   } else if (!AsciiStrnCmp (BootDeviceType, "EMMC", AsciiStrLen ("EMMC"))) {
     AsciiSPrint (BootDevBuf, Len, "%x.sdhci", BootDevAddr);
+  } else if (!AsciiStrnCmp (BootDeviceType, "NVME", AsciiStrLen ("NVME"))) {
+    AsciiSPrint (BootDevBuf, Len, "%x.pcie", BootDevAddr);
   } else {
     DEBUG ((EFI_D_ERROR, "Unknown Boot Device type detected \n"));
     return EFI_NOT_FOUND;

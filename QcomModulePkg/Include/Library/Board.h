@@ -30,7 +30,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -91,6 +91,7 @@ typedef enum {
   EMMC = 0,
   UFS = 1,
   NAND = 2,
+  NVME = 3,
   UNKNOWN,
 } MemCardType;
 
@@ -122,6 +123,7 @@ struct BoardInfo {
   CHAR8 ChipBaseBand[EFICHIPINFO_MAX_ID_LENGTH];
   EFIChipInfoVersionType ChipVersion;
   EFIChipInfoFoundryIdType FoundryId;
+  UINT32 PackageId;
   UINT32 HlosSubType;
 };
 
@@ -142,6 +144,7 @@ UINT32 BoardPlatformRawChipId (VOID);
 CHAR8 *BoardPlatformChipBaseBand (VOID);
 EFIChipInfoVersionType BoardPlatformChipVersion (VOID);
 EFIChipInfoFoundryIdType BoardPlatformFoundryId (VOID);
+UINT32 BoardPlatformPackageId (VOID);
 EFI_PLATFORMINFO_PLATFORM_TYPE BoardPlatformType (VOID);
 UINT32 BoardPlatformVersion (VOID);
 UINT32 BoardPlatformSubType (VOID);

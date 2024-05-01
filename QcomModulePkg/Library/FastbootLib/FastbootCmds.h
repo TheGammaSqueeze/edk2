@@ -34,7 +34,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -119,9 +119,10 @@
 
 /* Divide allocatable free memory by 3/4ths or 85/100ths */
 #define EFI_FREE_MEM_DIVISOR(BYTES) \
-  (IsLEVariant () \
-   && (CheckRootDeviceType () == NAND \
-       || CheckRootDeviceType () == EMMC) ? \
+  (IsLEVariant () && \
+   (CheckRootDeviceType () == NAND || \
+       CheckRootDeviceType () == EMMC || \
+       CheckRootDeviceType () == NVME) ? \
    (((BYTES) * 90) / 100) : (((BYTES) * 3) / 4))
 
 /* 64MB */
