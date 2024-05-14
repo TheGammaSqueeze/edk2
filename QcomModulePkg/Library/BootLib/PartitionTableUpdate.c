@@ -168,6 +168,8 @@ VOID UpdatePartitionEntries (VOID)
       }
 
       gBS->CopyMem ((&PtnEntries[Index]), PartEntry, sizeof (PartEntry[0]));
+      DEBUG ((EFI_D_VERBOSE, "[%a] Partition name is %s\n",
+                    __func__, PartEntry->PartitionName));
       PtnEntries[Index].lun = i;
     }
   }
@@ -708,7 +710,11 @@ EnumeratePartitions (VOID)
   Ptable[0].MaxHandles = ARRAY_SIZE (Ptable[0].HandleInfoList);
   HandleFilter.PartitionType = NULL;
   HandleFilter.VolumeName = NULL;
+#ifdef AUTO_VIRT_ABL
+  HandleFilter.RootDeviceType = &gVirtioMmioTransportGuid;
+#else
   HandleFilter.RootDeviceType = &gEfiNandUserPartitionGuid;
+#endif
 
   Status =
       GetBlkIOHandles (Attribs, &HandleFilter, &Ptable[0].HandleInfoList[0],
