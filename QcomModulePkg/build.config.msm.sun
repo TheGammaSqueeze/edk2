@@ -9,6 +9,7 @@ BUILD_USES_RECOVERY_AS_BOOT=0
 DISABLE_PARALLEL_DOWNLOAD_FLASH=0
 REMOVE_CARVEOUT_REGION=1
 PVMFW_ENABLED=1
+QSPA_BOOTCONFIG_ENABLE=1
 
 ################################################################################
 . ${ROOT_DIR}/${ABL_SRC}/QcomModulePkg/build.config.msm.common
