@@ -32,7 +32,7 @@
  /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -560,7 +560,9 @@ DTBImgCheckAndAppendDT (BootInfo *Info, BootParamlist *BootParamlistPtr)
   VOID *NextDtHdr = NULL;
   VOID *BoardDtb = NULL;
   VOID *SocDtb = NULL;
+#ifndef AUTO_VIRT_ABL
   VOID *OverrideDtb = NULL;
+#endif
   VOID *Dtb;
   BOOLEAN DtboCheckNeeded = FALSE;
   BOOLEAN DtboImgInvalid = FALSE;
@@ -738,6 +740,19 @@ DTBImgCheckAndAppendDT (BootInfo *Info, BootParamlist *BootParamlistPtr)
       SetVmDisable ();
     }
   } else {
+#ifdef AUTO_VIRT_ABL
+    /* For ABL running in a VM, we fetch SOC device tree address
+     * from virtialized UEFI directly.
+     */
+    UINTN DataSize = 0;
+    UINT64 U64SocDtb = 0;
+
+    DataSize = sizeof (U64SocDtb);
+    Status = gRT->GetVariable ((CHAR16 *)L"VmDeviceTreeBase",
+                          &gQcomTokenSpaceGuid,
+                          NULL, &DataSize, &U64SocDtb);
+    SocDtb = (VOID *)U64SocDtb;
+#else
     /*It is the case of DTB overlay Get the Soc specific dtb */
     SocDtb = GetSocDtb (ImageBuffer,
          ImageSize,
@@ -749,6 +764,7 @@ DTBImgCheckAndAppendDT (BootInfo *Info, BootParamlist *BootParamlistPtr)
                   "Error: Appended Soc Device Tree blob not found\n"));
       return EFI_NOT_FOUND;
     }
+#endif
 
     /*Check do we really need to gothrough DTBO or not*/
     DtboCheckNeeded = GetDtboNeeded ();
@@ -812,6 +828,7 @@ DTBImgCheckAndAppendDT (BootInfo *Info, BootParamlist *BootParamlistPtr)
       }
     }
 
+#ifndef AUTO_VIRT_ABL
     // Only enabled to debug builds.
     if (!TargetBuildVariantUser ()) {
       Status = GetOvrdDtb (&OverrideDtb);
@@ -826,6 +843,7 @@ DTBImgCheckAndAppendDT (BootInfo *Info, BootParamlist *BootParamlistPtr)
         return EFI_OUT_OF_RESOURCES;
       }
     }
+#endif
 
     // Add AVF DP dtbo to DtsList. This will be applied to HLOS DT.
    if (BootParamlistPtr->AvfDpDtboBaseAddr != NULL) {

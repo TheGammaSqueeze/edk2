@@ -276,7 +276,11 @@ GetBlkIOHandles (IN UINT32 SelectionAttrib,
             RootDevicePath->Header.SubType != HW_VENDOR_DP ||
             (RootDevicePath->Header.Length[0] |
              (RootDevicePath->Header.Length[1] << 8)) !=
+#ifdef AUTO_VIRT_ABL
+                (sizeof (VENDOR_DEVICE_PATH) + sizeof (UINT64)) ||
+#else
                 sizeof (VENDOR_DEVICE_PATH) ||
+#endif
             ((FilterData->RootDeviceType != NULL) &&
              (CompareGuid (FilterData->RootDeviceType,
                            &RootDevicePath->Guid) == FALSE)))
@@ -406,6 +410,56 @@ ToLower (CHAR8 *Str)
   }
 }
 
+#ifdef AUTO_VIRT_ABL
+EFI_STATUS
+LoadImageFromVirtioTLB (VOID *ImageBuffer,
+                UINT32 *ImageSize,
+                EFI_BLOCK_IO_PROTOCOL *BlkIo)
+{
+  EFI_STATUS Status;
+  UINT64 BufferAddr = 0, BufferSize = 0;
+  UINTN Cycles, Remainder, Size, i;
+  UINT32 PageSize = BlkIo->Media->BlockSize;
+  UINTN DataSize = 0;
+  EFI_LBA Lba = 0;
+
+  DataSize = sizeof (BufferAddr);
+  Status = gRT->GetVariable ((CHAR16 *)L"VirtioTlbBase", &gQcomTokenSpaceGuid,
+                          NULL, &DataSize, &BufferAddr);
+
+  DataSize = sizeof (BufferSize);
+  Status = gRT->GetVariable ((CHAR16 *)L"VirtioTlbSize", &gQcomTokenSpaceGuid,
+                              NULL, &DataSize, &BufferSize);
+
+  Cycles = *ImageSize / (UINT32)BufferSize;
+  Remainder =  *ImageSize % (UINT32)BufferSize;
+  Size = BufferSize;
+  for (i = 0; i < Cycles + 1; i++) {
+    if (i == Cycles) {
+      Size = Remainder;
+    }
+    Status = BlkIo->ReadBlocks (
+      BlkIo, BlkIo->Media->MediaId, Lba,
+      ROUND_TO_PAGE (Size, BlkIo->Media->BlockSize - 1), (VOID *)BufferAddr);
+    if (Status == EFI_SUCCESS) {
+      gBS->CopyMem ((VOID *)ImageBuffer, (VOID *)BufferAddr, Size);
+      ImageBuffer += Size;
+      Lba += Size / PageSize;
+      DEBUG ((EFI_D_VERBOSE, "%a: Loading Image %d Bytes Done\n",
+            __func__,
+            ROUND_TO_PAGE (Size, BlkIo->Media->BlockSize - 1)));
+    } else {
+      DEBUG ((EFI_D_VERBOSE, "%a: Loading Image %d Bytes failed: %r\n",
+            __func__,
+            ROUND_TO_PAGE (Size, BlkIo->Media->BlockSize - 1), Status));
+      break;
+    }
+  }
+
+  return Status;
+}
+#endif
+
 /* Load image from partition to buffer */
 EFI_STATUS
 LoadImageFromPartition (VOID *ImageBuffer, UINT32 *ImageSize, CHAR16 *Pname)
@@ -450,9 +504,15 @@ LoadImageFromPartition (VOID *ImageBuffer, UINT32 *ImageSize, CHAR16 *Pname)
 
   BlkIo = HandleInfoList[0].BlkIo;
 
+#ifdef AUTO_VIRT_ABL
+  Status = LoadImageFromVirtioTLB (ImageBuffer,
+                  ImageSize,
+                  BlkIo);
+#else
   Status = BlkIo->ReadBlocks (
       BlkIo, BlkIo->Media->MediaId, 0,
       ROUND_TO_PAGE (*ImageSize, BlkIo->Media->BlockSize - 1), ImageBuffer);
+#endif
 
   if (Status == EFI_SUCCESS) {
     DEBUG ((DEBUG_INFO, "Loading Image %s Done : "
@@ -851,6 +911,10 @@ GetBootDevice (CHAR8 *BootDevBuf, UINT32 Len)
     AsciiSPrint (BootDevBuf, Len, "%x.sdhci", BootDevAddr);
   } else if (!AsciiStrnCmp (BootDeviceType, "NVME", AsciiStrLen ("NVME"))) {
     AsciiSPrint (BootDevBuf, Len, "%x.pcie", BootDevAddr);
+  } else if (!AsciiStrnCmp (BootDeviceType, "VBLK", AsciiStrLen ("VBLK"))) {
+    DEBUG ((EFI_D_ERROR, "Virtio Block Device is not"
+                         " supported as Boot Device\n"));
+    return EFI_NOT_FOUND;
   } else {
     DEBUG ((EFI_D_ERROR, "Unknown Boot Device type detected \n"));
     return EFI_NOT_FOUND;

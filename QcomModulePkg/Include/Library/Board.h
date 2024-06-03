@@ -92,6 +92,7 @@ typedef enum {
   UFS = 1,
   NAND = 2,
   NVME = 3,
+  VBLK = 4,
   UNKNOWN,
 } MemCardType;
 

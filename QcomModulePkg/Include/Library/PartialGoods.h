@@ -67,6 +67,7 @@
 
 #include <Library/Board.h>
 #define MAX_CPU_CLUSTER 3
+#define SUBSET_PART_CHIPINFO_BASE_REVISION 0x0000000000010002
 
 struct SubNodeListNew {
   CONST CHAR8 *SubNodeName;  /* Subnode name */
@@ -92,7 +93,29 @@ struct PartialGoodsWithLabel {
   struct LabelStruct LabelRef; /* Labels list */
 };
 
+ STATIC CONST char *ChipInfoPartTypeStr[] = {
+  [EFICHIPINFO_PART_UNKNOWN]   = "unknown",
+  [EFICHIPINFO_PART_GPU]       = "gpu",
+  [EFICHIPINFO_PART_VIDEO]     = "video",
+  [EFICHIPINFO_PART_CAMERA]    = "camera",
+  [EFICHIPINFO_PART_DISPLAY]   = "display",
+  [EFICHIPINFO_PART_AUDIO]     = "audio",
+  [EFICHIPINFO_PART_MODEM]     = "modem",
+  [EFICHIPINFO_PART_WLAN]      = "wlan",
+  [EFICHIPINFO_PART_COMP]      = "comp",
+  [EFICHIPINFO_PART_SENSORS]   = "sensors",
+  [EFICHIPINFO_PART_NPU]       = "npu",
+  [EFICHIPINFO_PART_SPSS]      = "spss",
+  [EFICHIPINFO_PART_NAV]       = "nav",
+  [EFICHIPINFO_PART_COMPUTE_1] = "comp1",
+  [EFICHIPINFO_PART_DISPLAY_1] = "display1",
+  [EFICHIPINFO_PART_NSP]       = "nsp",
+  [EFICHIPINFO_PART_EVA]       = "eva",
+};
+
 EFI_STATUS
 UpdatePartialGoodsNode (VOID *fdt);
 
+EFI_STATUS
+ReadMMPartialGoods (EFI_CHIPINFO_PROTOCOL *pChipInfoProtocol, UINT32 *Value);
 #endif

@@ -53,7 +53,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following
  * license:
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the disclaimer
@@ -94,6 +94,7 @@
 #include <Library/DebugLib.h>
 #include <Library/Debug.h>
 #include <Library/MemoryAllocationLib.h>
+#include <Library/LinuxLoaderLib.h>
 #include <Uefi.h>
 #include "BootStats.h"
 
@@ -235,6 +236,15 @@ AvbIOResult AvbReadFromPartition(AvbOps *Ops, const char *Partition, int64_t Rea
 		Result = AVB_IO_RESULT_ERROR_OOM;
 		goto out;
 	}
+
+#ifdef AUTO_VIRT_ABL
+        UINT32 RealReadSize = ROUND_TO_PAGE (NumBytes, PageSize - 1);
+        Status = LoadImageFromVirtioTLB (Buffer + StartPageReadSize,
+                               &RealReadSize,
+                               BlockIo);
+        *OutNumRead = NumBytes;
+        goto out;
+#endif
 
 	StartBlock = Offset / PageSize;
 	LastBlock = (NumBytes + Offset) / PageSize;

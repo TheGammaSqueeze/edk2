@@ -119,6 +119,7 @@
 	ArmPlatformPkg/ArmPlatformPkg.dec
 	MdeModulePkg/MdeModulePkg.dec
 	QcomModulePkg/QcomModulePkg.dec
+	OvmfPkg/OvmfPkg.dec
 
 [LibraryClasses]
 	DxeServicesTableLib
@@ -167,6 +168,7 @@
 	gEfiUfsLU6Guid
 	gEfiUfsLU7Guid
         gEfiNvme0Guid
+	gVirtioMmioTransportGuid
 
 [Protocols]
 	gEfiSimpleTextInputExProtocolGuid

@@ -168,6 +168,8 @@ VOID UpdatePartitionEntries (VOID)
       }
 
       gBS->CopyMem ((&PtnEntries[Index]), PartEntry, sizeof (PartEntry[0]));
+      DEBUG ((EFI_D_VERBOSE, "[%a] Partition name is %s\n",
+                    __func__, PartEntry->PartitionName));
       PtnEntries[Index].lun = i;
     }
   }
@@ -708,7 +710,11 @@ EnumeratePartitions (VOID)
   Ptable[0].MaxHandles = ARRAY_SIZE (Ptable[0].HandleInfoList);
   HandleFilter.PartitionType = NULL;
   HandleFilter.VolumeName = NULL;
+#ifdef AUTO_VIRT_ABL
+  HandleFilter.RootDeviceType = &gVirtioMmioTransportGuid;
+#else
   HandleFilter.RootDeviceType = &gEfiNandUserPartitionGuid;
+#endif
 
   Status =
       GetBlkIOHandles (Attribs, &HandleFilter, &Ptable[0].HandleInfoList[0],
@@ -1444,6 +1450,19 @@ GetActiveSlot (Slot *ActiveSlot)
   Slot Slots[] = {{L"_a"}, {L"_b"}};
   UINT64 Priority = 0;
 
+#ifdef AUTO_VIRT_ABL
+  UINTN DataSize = 0;
+  CHAR16 TempActiveSlot[] = L"_x";
+
+  DataSize = sizeof (TempActiveSlot);
+  Status = gRT->GetVariable ((CHAR16 *)L"ActiveSlot", &gQcomTokenSpaceGuid,
+                          NULL, &DataSize, TempActiveSlot);
+  GUARD (StrnCpyS (ActiveSlot->Suffix, ARRAY_SIZE (ActiveSlot->Suffix),
+                  TempActiveSlot, StrLen (TempActiveSlot)));
+
+  return Status;
+#endif
+
   if (ActiveSlot == NULL) {
     DEBUG ((EFI_D_ERROR, "GetActiveSlot: bad parameter\n"));
     return EFI_INVALID_PARAMETER;
@@ -1798,6 +1817,9 @@ FindBootableSlot (Slot *BootableSlot)
 
   GUARD (GetActiveSlot (BootableSlot));
 
+#ifdef AUTO_VIRT_ABL
+  return Status;
+#endif
   /* Validate Active Slot is bootable */
   BootEntry = GetBootPartitionEntry (BootableSlot);
   if (BootEntry == NULL) {
