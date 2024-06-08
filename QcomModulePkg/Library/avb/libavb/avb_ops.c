@@ -94,7 +94,6 @@
 #include <Library/DebugLib.h>
 #include <Library/Debug.h>
 #include <Library/MemoryAllocationLib.h>
-#include <Library/LinuxLoaderLib.h>
 #include <Uefi.h>
 #include "BootStats.h"
 
@@ -236,15 +235,6 @@ AvbIOResult AvbReadFromPartition(AvbOps *Ops, const char *Partition, int64_t Rea
 		Result = AVB_IO_RESULT_ERROR_OOM;
 		goto out;
 	}
-
-#ifdef AUTO_VIRT_ABL
-        UINT32 RealReadSize = ROUND_TO_PAGE (NumBytes, PageSize - 1);
-        Status = LoadImageFromVirtioTLB (Buffer + StartPageReadSize,
-                               &RealReadSize,
-                               BlockIo);
-        *OutNumRead = NumBytes;
-        goto out;
-#endif
 
 	StartBlock = Offset / PageSize;
 	LastBlock = (NumBytes + Offset) / PageSize;
