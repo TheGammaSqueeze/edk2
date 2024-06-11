@@ -7,6 +7,8 @@ TARGET_BOARD_TYPE_AUTO=0
 BUILD_USES_RECOVERY_AS_BOOT=0
 DISABLE_PARALLEL_DOWNLOAD_FLASH=0
 VERIFIED_BOOT_ENABLED=1
+HIBERNATION_SUPPORT_NO_AES=1
+HIBERNATION_PARTITION_NAME="swap"
 
 ################################################################################
 . ${ROOT_DIR}/${ABL_SRC}/QcomModulePkg/build.config.msm.common
