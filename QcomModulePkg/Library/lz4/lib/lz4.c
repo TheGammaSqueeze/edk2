@@ -27,6 +27,10 @@
    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+   Changes from Qualcomm Innovation Center are provided under the following license:
+   Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+   SPDX-License-Identifier: BSD-3-Clause-Clear
+
    You can contact the author at :
     - LZ4 homepage : http://www.lz4.org
     - LZ4 source repository : https://github.com/lz4/lz4
@@ -219,17 +223,17 @@ void  LZ4_free(void* p);
 # define ALLOC_AND_ZERO(s) LZ4_calloc(1,s)
 # define FREEMEM(p)        LZ4_free(p)
 #else
-# include <stdlib.h>   /* malloc, calloc, free */
-# define ALLOC(s)          malloc(s)
-# define ALLOC_AND_ZERO(s) calloc(1,s)
-# define FREEMEM(p)        free(p)
+#include <avb/libavb/libavb.h>  /* malloc, calloc, free */
+# define ALLOC(s)          avb_malloc(s)
+# define ALLOC_AND_ZERO(s) avb_calloc(s)
+# define FREEMEM(p)        avb_free(p)
 #endif
 
 #if ! LZ4_FREESTANDING
-#  include <string.h>   /* memset, memcpy */
+#include <avb/libavb/libavb.h>  /* memset, memcpy */
 #endif
 #if !defined(LZ4_memset)
-#  define LZ4_memset(p,v,s) memset((p),(v),(s))
+#  define LZ4_memset(p,v,s) avb_memset((p),(v),(s))
 #endif
 #define MEM_INIT(p,v,s)   LZ4_memset((p),(v),(s))
 
@@ -298,7 +302,7 @@ static int LZ4_isAligned(const void* ptr, size_t alignment)
 **************************************/
 #include <limits.h>
 #if defined(__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */)
-# include <stdint.h>
+#include <avb/libavb/libavb.h>
   typedef  uint8_t BYTE;
   typedef uint16_t U16;
   typedef uint32_t U32;
@@ -350,11 +354,12 @@ typedef enum {
 #  endif
 #endif
 
+#include <Library/BaseMemoryLib.h>
 #if !defined(LZ4_memmove)
 #  if defined(__GNUC__) && (__GNUC__ >= 4)
-#    define LZ4_memmove __builtin_memmove
+#    define LZ4_memmove CopyMem
 #  else
-#    define LZ4_memmove memmove
+#    define LZ4_memmove CopyMem
 #  endif
 #endif
 
