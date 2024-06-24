@@ -76,11 +76,13 @@
 #include <Protocol/EFIKernelInterface.h>
 #if HIBERNATION_SUPPORT_AES
 #include <Library/aes/aes_public.h>
+#include <Library/lz4/lib/lz4.h>
 #include <Protocol/EFIQseecom.h>
 #endif
 #include "KeymasterClient.h"
 
 #define IS_ZERO_PFN(pfn) ((pfn) & ((UINT64) 1 << 63))
+#define IS_COMPRESS(flag) ((flag) & ( 1 << 4 ))
 #define BUG(Fmt, ...) {\
                 printf ("Fatal error " Fmt, ##__VA_ARGS__); \
                 while (1); \
@@ -103,6 +105,8 @@ typedef struct FreeRanges {
 #define NUM_PAGES_PER_SILVER_CORE ((NrCopyPages / 54) * 4)
 
 static struct DecryptParam *Dp;
+static VOID *Authslot;
+static UINT32 AuthslotStart;
 static CHAR8 *Authtags;
 static VOID *AuthCur[NUM_CORES];
 static VOID *TempOut[NUM_CORES];
@@ -230,6 +234,8 @@ typedef struct RestoreInfo {
         VOID *AuthCur;
         UINT32 ThreadId;
         UINT8 Iv[12];
+        struct DecryptInfo *DecInfo;
+        struct CmpBuffer *CmpBuf;
 #endif
 }RestoreInfo;
 
@@ -538,6 +544,69 @@ static INT32 VerifySwapPartition (VOID)
         return 0;
 }
 
+/* We need to remember how much compressed data we need to read. */
+#define CMP_HEADER      sizeof(size_t)
+
+/* Number of pages/bytes we'll compress at one time. */
+#define CMP_UNC_PAGES   32
+#define CMP_UNC_SIZE    (CMP_UNC_PAGES * PAGE_SIZE)
+
+/* Number of pages/bytes we need for compressed data (worst case). */
+#define CMP1X_WORST_CMP  CMP_UNC_SIZE + (CMP_UNC_SIZE / 16) + 64 + 3
+#define CMP_CMP_SIZE     CMP1X_WORST_CMP + CMP_HEADER
+
+/* Structure used for data decompression */
+typedef struct DecryptData {
+        INT64 Ret;                           /* return code */
+        size_t UNCLen;                       /* uncompressed length */
+        size_t CMPLen;                       /* compressed length */
+        UINT8 Unc[CMP_UNC_SIZE];             /* uncompressed buffer */
+        UINT8 Cmp[CMP_CMP_SIZE];             /* compressed buffer */
+}DecryptData;
+
+/* If the previous block remains uncompressed, then
+ * DecryptInfo structure contains information regarding previous iterations.
+ * RByte    - The number of bytes yet to be read in the upcoming iterations.
+ * Pos      - If the previous block hasn't been decompressed, then "Pos"
+ *            indicates the number of blocks read in the previous iterations.
+ * CMPLen   - If the previous block remains uncompressed, then "CMPLen" holds
+ *            the compression length from the previous iteration.
+ * TBytes   - Total count of uncompressed bytes.
+ * CmpG     - If the previous block remains uncompressed,
+ *            then the "CmpG" buffer retains the bytes from previous iterations.
+ */
+typedef struct DecryptInfo {
+    INT64 RByte;
+    INT64 Pos;
+    INT64 CMPLen;
+    INT64 TBytes;
+    UINT8 CmpG[CMP_CMP_SIZE];
+}DecryptInfo;
+
+/* CmpBuffer serves as a buffer for data
+ * following the decompression process,
+ * as the data size increases upon decompression.
+ */
+typedef struct CmpBuffer {
+        UINT8 *Buf;                          /* Contains decompressed data */
+        INT32 RPos;                          /* Buffer's read position */
+        INT32 WPos;                          /* Buffer's write position */
+}CmpBuffer;
+
+/* DecInfo is used for handling uncompresse block for Meta Pages */
+static struct DecryptInfo DecInfo = {
+    .RByte = 0,
+    .Pos = 0,
+    .CMPLen = 0,
+    .TBytes = 0,
+};
+
+/* CmpBf holds both the read and write positions of the buffer for meta pages */
+static struct CmpBuffer CmpBuf = {
+        .RPos = 0,
+        .WPos = 0,
+};
+
 static INT32 ReadImage (UINT64 Offset, VOID *Buff, INT32 NrPages)
 {
         INT32 Status;
@@ -557,6 +626,295 @@ static INT32 ReadImage (UINT64 Offset, VOID *Buff, INT32 NrPages)
 
         return 0;
 }
+
+#if HIBERNATION_SUPPORT_AES
+static VOID CopyPageToDst (UINT64 SrcPfn, UINT64 DstPfn);
+static VOID CopyZeroPageToDst (UINT64 DstPfn);
+static INT32 CheckSwapMapPage (UINT64 Offset);
+static INT32 DecryptPage (VOID *EncryptData, CHAR8 *Auth, VOID *TempOut,
+                          VOID *AuthCurrent, UINT32 ThreadId, UINT8* Iv);
+static VOID IncrementIV (UINT8 *Iv, UINT8 Size, UINT64 Val);
+
+/* The InitBlockArr function is reading a compressed unit block array
+ * from the disk. This block array is stored at the end of the disk as
+ * part of the hibernation image creation process, and this approach
+ * is employed for optimization purposes.
+ * In this specific example, a 32-page unit is compressed.
+ * Here's a representation of the stored block array:
+ *
+ * |-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-
+ * | 12  | 15  | 22  | 25  | 19  | 17  | 20  | 9   | 26  | 29  | 30  |
+ * |-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-
+ *
+ * An alternative method is to populate the block array in the bootloader,
+ * but this approach introduces a regression.
+ */
+
+static INT32 InitBlockArr (UINT8 **BlkArr)
+{
+        static INT32 BlkSlot;
+        static INT64 BlkIndex, BlkPages, BlkBytes;
+
+        BlkSlot = AuthslotStart + Dp->AuthCount ;
+        BlkIndex = ((NrCopyPages + NrMetaPages + 1) % CMP_UNC_PAGES) == 0 ?
+                ((NrCopyPages + NrMetaPages + 1) / CMP_UNC_PAGES) :
+                ((NrCopyPages + NrMetaPages + 1) / CMP_UNC_PAGES + 1);
+
+        BlkBytes = (BlkIndex + 1) * sizeof (UINT8);
+        BlkPages = BlkBytes % PAGE_SIZE == 0 ?
+                BlkBytes / PAGE_SIZE : BlkBytes / PAGE_SIZE + 1;
+        *BlkArr = AllocatePages (BlkPages);
+        if (!BlkArr) {
+                return -1;
+        }
+
+        if (ReadImage (BlkSlot, *BlkArr, BlkPages)) {
+                return -1;
+        }
+        return 0;
+}
+
+/* The Decompress_LZ4 function decompresses Nrpages pages from the Buff buffer
+ * and stores the decompressed data in the CmpBuf.
+ */
+static INT32 Decompress_LZ4 (UINT64 Offset, VOID *Buff, INT32 Nrpages,
+                             INT32 *Rread, INT32 ThreadId,
+                             struct DecryptInfo *DecInfo,
+                             struct CmpBuffer *CmpBuf
+                             )
+{
+        struct DecryptData *Data = NULL;
+        Data = AllocateZeroPool (sizeof (*Data));
+        Data->UNCLen = CMP_UNC_SIZE;
+        UINT32 Cnt = 0, K = 0;
+        UINT64 TByte = 0;
+
+        /* If the previous block unit has not been decompressed,
+         * then the first step is to read the required data and decompress it
+         */
+        if (DecInfo->RByte != 0) {
+                K = 0;
+                CopyMem (Data->Cmp, DecInfo->CmpG, (DecInfo->Pos) * PAGE_SIZE);
+                while ((( K * PAGE_SIZE) < (DecInfo->RByte))
+                                &&
+                                (Cnt < Nrpages)) {
+                        if ( !CheckSwapMapPage (Offset + Cnt)) {
+                            CopyMem (Data->Cmp + (DecInfo->Pos * PAGE_SIZE),
+                                           Buff + (Cnt * PAGE_SIZE), PAGE_SIZE);
+                            DecInfo->Pos++;
+                            K++;
+                        }
+                        Cnt++;
+                }
+                DecInfo->Pos = 0, DecInfo->RByte = 0;
+                Data->CMPLen = DecInfo->CMPLen;
+
+                Data->Ret = LZ4_decompress_safe ((CONST CHAR8*) (Data->Cmp
+                                        + CMP_HEADER),
+                               (CHAR8*) Data->Unc, Data->CMPLen, Data->UNCLen);
+                if (Data->Ret > 0) {
+                        TByte += Data->Ret;
+                        CopyMem (CmpBuf->Buf, Data->Unc, Data->Ret);
+                        CmpBuf->WPos += Data->Ret;
+                } else {
+                        printf (
+                             "The decompression process for the data in thread \
+                              %d failed at line %d \n", ThreadId, __LINE__
+                        );
+                        return -1;
+                }
+        }
+
+        while (Cnt < Nrpages) {
+                Data->UNCLen = CMP_UNC_SIZE;
+                if (CheckSwapMapPage (Offset + Cnt)) {
+                    Cnt++;
+                    continue;
+                }
+                Data->CMPLen = *(size_t *) (Buff + (Cnt * PAGE_SIZE));
+                K = 0, DecInfo->RByte = 0;
+                while (((K * PAGE_SIZE) < (CMP_HEADER + Data->CMPLen))
+                                &&
+                                (Cnt < Nrpages)) {
+                        if ( !CheckSwapMapPage (Offset + Cnt)) {
+                                CopyMem (Data->Cmp + (K * PAGE_SIZE),
+                                                Buff + (Cnt * PAGE_SIZE),
+                                                PAGE_SIZE);
+                                K++;
+                        }
+                        Cnt++;
+                }
+                if (K * PAGE_SIZE < (CMP_HEADER + Data->CMPLen)) {
+                        DecInfo->RByte = CMP_HEADER + Data->CMPLen
+                                         - (K * PAGE_SIZE);
+                        DecInfo->Pos = K;
+                        DecInfo->CMPLen = Data->CMPLen;
+                        CopyMem (DecInfo->CmpG, Data->Cmp, K * PAGE_SIZE);
+                }
+                if (DecInfo->RByte == 0) {
+                        Data->Ret =  LZ4_decompress_safe ((CONST CHAR8*)
+                                        (Data->Cmp + CMP_HEADER),
+                                        (CHAR8*) Data->Unc,
+                                        Data->CMPLen, Data->UNCLen);
+                        if (Data->Ret > 0) {
+                                TByte += Data->Ret;
+                                CopyMem (CmpBuf->Buf + CmpBuf->WPos, Data->Unc,
+                                                Data->Ret);
+                                CmpBuf->WPos += Data->Ret;
+                        } else {
+                                printf (
+                                     "The decompression process for the data \
+                                      in thread %d failed at line %d \n",
+                                      ThreadId, __LINE__
+                                );
+                                return -1;
+                        }
+                }
+        }
+        if ((DecInfo->RByte == 0)
+                        &&
+                        ((*Rread) > TByte))
+        {
+                *Rread = TByte;
+        }
+
+        CmpBuf->RPos += *Rread;
+        DecInfo->TBytes += TByte;
+        return 0;
+}
+
+/* The MetaDecompress function performs decryption
+ * and decompression of meta pages.
+ */
+static INT32 MetaDecompress (UINT64 *Soffset, VOID *Buff, INT32 NrPages,
+                             CHAR8 **RAuthtags, VOID *RTempOut, VOID *RAuthCur,
+                             UINT32 RThreadId, UINT8 RIv[12],
+                             struct DecryptInfo *DecInfo,
+                             struct CmpBuffer *CmpBuf
+                             )
+{
+        INT32 Ret, Loop = 0;
+        INT32 Len = 0, Rread;
+        INT32 SMPage = 0;
+
+        if ((CmpBuf->WPos - CmpBuf->RPos) < NrPages * PAGE_SIZE) {
+                SMPage = (*Soffset - 1 + NrPages) / PFN_INDEXES_PER_PAGE;
+                if ( DISK_BUFFER_PAGES < NrPages + SMPage
+                                ||
+                                ReadImage (*Soffset, Buff, NrPages + SMPage))
+                {
+                    printf ("Thread %d failed to read Line %d\n",
+                                    RThreadId, __LINE__);
+                    return -1;
+                }
+                Len = CmpBuf->WPos - CmpBuf->RPos;
+                Rread = (NrPages * PAGE_SIZE) - Len;
+                CmpBuf->RPos = 0, CmpBuf->WPos = 0;
+                while (NrPages + SMPage - Loop > 0) {
+                        if ( !CheckSwapMapPage ( Loop + *Soffset )) {
+                                if (DecryptPage ((VOID *) (Buff
+                                                           + Loop * PAGE_SIZE),
+                                                        Authtags, RTempOut,
+                                                        RAuthCur, RThreadId,
+                                                        RIv))
+                                {
+                                       printf (
+                                            "The decryption process for the \
+                                             meta pages in thread %d failed at \
+                                             line %d\n", RThreadId, __LINE__
+                                       );
+
+                                        return -1;
+                                }
+                                Authtags += Dp->Authsize;
+                        }
+                        Loop++;
+                }
+                if (SwsuspHeader->Flags & ( 1 << 4 )) {
+                        Ret = Decompress_LZ4 (*Soffset, Buff, NrPages + SMPage,
+                                        &Rread, RThreadId, DecInfo, CmpBuf);
+                        printf ("Decompressing using LZ4 algorithm\n");
+                } else {
+                        printf (
+                           "ABL only supports the LZ4 decompression algorithm\n"
+                        );
+                        Ret = -1;
+                }
+                if (Ret) {
+                    return -1;
+                }
+                CopyMem (Buff, CmpBuf->Buf, NrPages * PAGE_SIZE);
+                *Soffset += NrPages + SMPage;
+        } else {
+                CopyMem (Buff, CmpBuf->Buf + CmpBuf->RPos, NrPages * PAGE_SIZE);
+                CmpBuf->RPos += NrPages * PAGE_SIZE;
+        }
+        return 0;
+}
+
+/* The DataDecompress function decrypts, decompresses, and copy the
+ * data to the appropriate PfnOffset.
+ */
+static INT32 DataDecompress (UINT64 *Soffset, VOID *Buff, INT32 NrPages,
+                             CHAR8 **RAuthtags, VOID *RTempOut, VOID *RAuthCur,
+                             UINT32 RThreadId, UINT8 RIv[12],
+                             struct DecryptInfo *DecInfo,
+                             struct CmpBuffer *CmpBuf,
+                             UINT64 *PfnIndex, UINT64 *KernelPfnIndexes
+                             )
+{
+        UINT64 SrcPfn, DstPfn;
+        INT32 Loop = 0, Rread = 0;
+        INT32 Ret;
+
+        if (ReadImage (*Soffset, Buff, NrPages)) {
+                printf (
+                      "Thread %d failed to read Line %d\n", RThreadId, __LINE__
+                );
+                return -1;
+        }
+        while (NrPages - Loop > 0) {
+                /* skip swap_map pages */
+                if ( !CheckSwapMapPage (*Soffset + Loop)) {
+                    if (DecryptPage ((VOID *) (Buff + Loop * PAGE_SIZE),
+                                            *RAuthtags, RTempOut, RAuthCur,
+                                            RThreadId, RIv))
+                    {
+                           printf (
+                                 "The decryption process for the data pages in \
+                                  thread %d failed at line %d \n",
+                                  RThreadId, __LINE__
+                           );
+                            return -1;
+                    }
+                    *RAuthtags += Dp->Authsize;
+                }
+                Loop++;
+        }
+        Rread = (NrPages * PAGE_SIZE);
+        CmpBuf->RPos = 0, CmpBuf->WPos = 0;
+        Ret = Decompress_LZ4 (*Soffset, Buff, NrPages, &Rread, RThreadId,
+                        DecInfo, CmpBuf);
+        if (Ret) {
+            return -1;
+        }
+        *Soffset += NrPages;
+        SrcPfn = (UINT64) (CmpBuf->Buf) >> PAGE_SHIFT;
+        Loop = (CmpBuf->WPos) / PAGE_SIZE;
+        while (Loop > 0) {
+                DstPfn = KernelPfnIndexes[(*PfnIndex)];
+                if (IS_ZERO_PFN (DstPfn)) {
+                        CopyZeroPageToDst (DstPfn);
+                } else {
+                        CopyPageToDst (SrcPfn, DstPfn);
+                        SrcPfn++;
+                        Loop--;
+                }
+                (*PfnIndex)++;
+        }
+        return 0;
+}
+#endif
 
 static INT32 IsCurrentTableFull (struct BounceTableIterator *Bti)
 {
@@ -835,32 +1193,47 @@ static INT32 ReadSwapInfoStruct (VOID)
  *                                |     :       :         |
  *                                |     :       :         |
  */
-static UINT64* ReadKernelImagePfnIndexes (UINT64 *Offset)
+static UINT64* ReadKernelImagePfnIndexes (UINT64 *Offset,
+                                          struct DecryptInfo *DecInfo,
+                                          struct CmpBuffer *CmpBuf,
+                                          UINT64 MPages
+                                          )
 {
         UINT64 *PfnArray, *ArrayIndex;
         UINT64 PendingPages = NrMetaPages;
         UINT64 PagesToRead, PagesRead = 0;
         UINT64 DiskOffset;
-        VOID *PfnArrayStart;
         INT32 Loop = 0, Ret;
+        DiskOffset = FIRST_PFN_INDEX_OFFSET;
+        UINT64 Soffset = DiskOffset;
+        VOID *PfnArrayStart;
 
         PfnArray = AllocatePages (NrMetaPages);
         if (!PfnArray) {
                 printf ("Memory alloc failed Line %d\n", __LINE__);
                 return NULL;
         }
-
-        PfnArrayStart = PfnArray;
-        DiskOffset = FIRST_PFN_INDEX_OFFSET;
+        if (!IS_COMPRESS (SwsuspHeader->Flags)) {
+                PfnArrayStart = PfnArray;
+        }
         /*
          * First swap_map page has one less pfn_index page
          * because of presence of swsusp_info struct. Handle
          * it separately.
          */
-        PagesToRead = MIN (PendingPages, ENTRIES_PER_SWAPMAP_PAGE - 1);
+        PagesToRead = MIN (PendingPages, MPages);
         ArrayIndex = PfnArray;
         do {
-                Ret = ReadImage (DiskOffset, ArrayIndex, PagesToRead);
+                if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                        /*The MetaDecompress function performs decryption
+                         * and decompression of meta pages.
+                         */
+                        Ret = MetaDecompress (&Soffset, ArrayIndex, PagesToRead,
+                                &Authtags, TempOut[0], AuthCur[0], 0,
+                                IvGlb, DecInfo, CmpBuf);
+                } else {
+                        Ret = ReadImage (DiskOffset, ArrayIndex, PagesToRead);
+                }
                 if (Ret) {
                         printf ("Disk read failed Line %d\n", __LINE__);
                         goto err;
@@ -887,19 +1260,20 @@ static UINT64* ReadKernelImagePfnIndexes (UINT64 *Offset)
         } while (1);
 
         *Offset = DiskOffset + PagesToRead;
-        while (PendingPages != NrMetaPages) {
+        if (!IS_COMPRESS (SwsuspHeader->Flags)) {
+                while (PendingPages != NrMetaPages) {
 #if HIBERNATION_SUPPORT_AES
-                if (DecryptPage (PfnArrayStart, Authtags, TempOut[0],
-                                 AuthCur[0], 0, IvGlb)) {
-                        printf ("Decryption failed for pfn array\n");
-                        return NULL;
-                }
-                Authtags += Dp->Authsize;
+                        if (DecryptPage (PfnArrayStart, Authtags, TempOut[0],
+                                         AuthCur[0], 0, IvGlb)) {
+                                printf ("Decryption failed for pfn array\n");
+                                return NULL;
+                        }
+                        Authtags += Dp->Authsize;
 #endif
-                PfnArrayStart = (CHAR8 *)PfnArrayStart + PAGE_SIZE;
-                PendingPages++;
+                        PfnArrayStart = (CHAR8 *)PfnArrayStart + PAGE_SIZE;
+                        PendingPages++;
+                }
         }
-
         return PfnArray;
 err:
         FreePages (PfnArray, NrMetaPages);
@@ -909,61 +1283,90 @@ err:
 static INT32 ReadDataPages (VOID *Arg)
 {
         UINT32 PendingPages, NrReadPages;
-        UINT64 SrcPfn, DstPfn;
         UINT64 PfnIndex = 0;
         INT32 Ret;
         Thread* CurrentThread = KernIntf->Thread->GetCurrentThread ();
         RestoreInfo *Info = (RestoreInfo *) Arg;
 
         PendingPages = Info->NumPages;
-        while (PendingPages > 0) {
-                /* read pages in chunks to improve disk read performance */
-
-                NrReadPages = PendingPages > DISK_BUFFER_PAGES ?
-                                        DISK_BUFFER_PAGES : PendingPages;
-                Ret = ReadImage (Info->Offset, Info->DiskReadBuffer,
-                                 NrReadPages);
-                if (Ret < 0) {
-                        printf ("Disk read failed Line %d\n", __LINE__);
-                        Info->Status = -1;
-                        return -1;
+        if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                UINT64 Soffset = Info->Offset;
+                while (PendingPages > 0) {
+                        /* read pages in chunks to improve disk read performance
+                         */
+                        NrReadPages = PendingPages > DISK_BUFFER_PAGES ?
+                                               DISK_BUFFER_PAGES : PendingPages;
+                        /* The DataDecompress function decrypts, decompresses,
+                         * and copy the data to the appropriate PfnOffset
+                         */
+                        Ret = DataDecompress (&Soffset, Info->DiskReadBuffer,
+                                              NrReadPages, &Info->Authtags,
+                                              Info->TempOut, Info->AuthCur,
+                                              Info->ThreadId, Info->Iv,
+                                              Info->DecInfo, Info->CmpBuf,
+                                              &PfnIndex, Info->KernelPfnIndexes
+                                              );
+                        if (Ret < 0) {
+                                Info->Status = -1;
+                                goto err;
+                        }
+                        PendingPages -= NrReadPages;
                 }
+        } else {
+                UINT64 SrcPfn, DstPfn;
+                while (PendingPages > 0) {
+                        /* read pages in chunks to improve disk read performance
+                         */
 
-                SrcPfn = (UINT64) Info->DiskReadBuffer >> PAGE_SHIFT;
-                while (NrReadPages > 0) {
-                        /* skip swap_map pages */
-                        if (!CheckSwapMapPage (Info->Offset)) {
-                                DstPfn = Info->KernelPfnIndexes[PfnIndex++];
-                                /* When generating a hibernation snapshot image,
-                                 * pages in memory that consist entirely of
-                                 * zeros are excluded from the snapshot.
-                                 * To identify such zero pages, the MSB of the
-                                 * PFN is set.
-                                 */
-                                if (IS_ZERO_PFN (DstPfn)) {
-                                        CopyZeroPageToDst (DstPfn);
-                                        continue;
-                                }
-                                PendingPages--;
+                        NrReadPages = PendingPages > DISK_BUFFER_PAGES ?
+                                               DISK_BUFFER_PAGES : PendingPages;
+                        Ret = ReadImage (Info->Offset, Info->DiskReadBuffer,
+                                         NrReadPages);
+                        if (Ret < 0) {
+                                printf ("Disk read failed Line %d\n", __LINE__);
+                                Info->Status = -1;
+                                return -1;
+                        }
+
+                        SrcPfn = (UINT64) Info->DiskReadBuffer >> PAGE_SHIFT;
+                        while (NrReadPages > 0) {
+                                /* skip swap_map pages */
+                                if ( !CheckSwapMapPage (Info->Offset)) {
+                                    DstPfn = Info->KernelPfnIndexes[PfnIndex++];
+                                    /* When generating a hibernation
+                                     * snapshot image, pages in memory that
+                                     * consist entirely of zeros are
+                                     * excluded from the snapshot.
+                                     * To identify such zero pages, the MSB
+                                     * of the PFN is set.
+                                     */
+                                    if (IS_ZERO_PFN (DstPfn)) {
+                                            CopyZeroPageToDst (DstPfn);
+                                            continue;
+                                    }
+                                    PendingPages--;
 #if HIBERNATION_SUPPORT_AES
-                                if (DecryptPage (
+                                    if (DecryptPage (
                                              (VOID *)(SrcPfn << PAGE_SHIFT),
                                               Info->Authtags, Info->TempOut,
                                               Info->AuthCur, Info->ThreadId,
-                                              Info->Iv)) {
-                                        printf (
-                                          "Decrypt failed for Data pages\n"
-                                        );
-                                        Info->Status = -1;
-                                        goto err;
-                                }
-                                Info->Authtags += Dp->Authsize;
+                                              Info->Iv))
+                                    {
+                                            printf (
+                                              "Decrypt failed for Data \
+                                               pages \n"
+                                            );
+                                            Info->Status = -1;
+                                            goto err;
+                                    }
+                                    Info->Authtags += Dp->Authsize;
 #endif
-                                CopyPageToDst (SrcPfn, DstPfn);
+                                    CopyPageToDst (SrcPfn, DstPfn);
+                                }
+                                SrcPfn++;
+                                NrReadPages--;
+                                Info->Offset++;
                         }
-                        SrcPfn++;
-                        NrReadPages--;
-                        Info->Offset++;
                 }
         }
         Info->Status = 0;
@@ -1286,20 +1689,32 @@ static INT32 InitTaAndGetKey (struct Secs2dTaHandle *TaHandle)
 
 static INT32 InitAesDecrypt (VOID)
 {
-        UINT32 AuthslotStart;
         INT32 AuthslotCount;
         Secs2dTaHandle TaHandle = {0};
         UINT32 NrSwapMapPages, i;
+        Authslot = AllocatePages (1);
+
+        if (!Authslot) {
+                return -1;
+        }
 
         Dp = AllocatePages (1);
         if (!Dp) {
                 printf ("Memory alloc failed Line %d\n", __LINE__);
                 return -1;
         }
-
-        NrSwapMapPages = (NrCopyPages + NrMetaPages) / ENTRIES_PER_SWAPMAP_PAGE;
-        AuthslotStart = NrMetaPages + NrCopyPages + NrSwapMapPages +
-                              HDR_SWP_INFO_NUM_PAGES;
+        if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                if (ReadImage (1, Authslot, 1)) {
+                        return -1;
+                }
+                AuthslotStart = *(INT32 *) (Authslot);
+        } else {
+                NrSwapMapPages = (NrCopyPages + NrMetaPages)
+                                        /
+                                  ENTRIES_PER_SWAPMAP_PAGE;
+                AuthslotStart = NrMetaPages + NrCopyPages + NrSwapMapPages +
+                                HDR_SWP_INFO_NUM_PAGES;
+        }
 
         if (ReadImage (AuthslotStart - 1, Dp, 1)) {
                 return -1;
@@ -1337,6 +1752,88 @@ static INT32 InitAesDecrypt (VOID)
 }
 #endif
 
+/* In both compression and nocompression scenarios, the ThreadConstructor
+ * populates the necessary parameter values for the RestoreInfo structure.
+ */
+static INT32 ThreadConstructor (VOID *Arg, UINT64 *Offset, UINT64 *PfnOffset,
+                                INT32 *DataIndx, INT64 BlkLen, UINT8 *BlkArr,
+                                INT64 NumPages
+                                )
+{
+
+        RestoreInfo *Info = (RestoreInfo *) Arg;
+        INT32 Iter2;
+        UINT64 Count = 0, NumCompPages;
+        Info->Offset = *Offset;
+        Info->NumPages = NumPages;
+        Info->KernelPfnIndexes = &KernelPfnIndexes[*PfnOffset];
+        NumCompPages = NumPages;
+        UINT64 DstPfn_z, NumDecomPage;
+#if HIBERNATION_SUPPORT_AES
+        gBS->CopyMem (Info->Iv, IvGlb, sizeof (Dp->Iv));
+        Info->Authtags = Authtags;
+#endif
+        if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                INT32 NSlot = 0;
+                NumCompPages = 0;
+                while ((NumCompPages <= NumPages)
+                                &&
+                                ((*DataIndx) < BlkLen))
+                {
+                    NumCompPages += BlkArr[(*DataIndx)++];
+                    NSlot++;
+                }
+                Info->NumPages = NumCompPages;
+                Info->CmpBuf =  AllocateZeroPool (sizeof (struct CmpBuffer));
+                if (!Info->CmpBuf) {
+                    printf ("Memory alloc failed Line %d\n", __LINE__);
+                    return -1;
+                }
+                Info->CmpBuf->Buf = AllocatePages (CMP_UNC_PAGES * NSlot);
+                if (!Info->CmpBuf->Buf) {
+                    printf ("Memory alloc failed Line %d\n", __LINE__);
+                    return -1;
+                } else {
+                    Info->CmpBuf->RPos = 0;
+                    Info->CmpBuf->WPos = 0;
+                }
+
+                Info->DecInfo =  AllocateZeroPool (sizeof (struct DecryptInfo));
+                if (!Info->DecInfo) {
+                   printf ("Memory alloc failed Line %d\n", __LINE__);
+                   return -1;
+                } else {
+                      Info->DecInfo->RByte = 0;
+                      Info->DecInfo->Pos = 0;
+                      Info->DecInfo->CMPLen = 0;
+                      Info->DecInfo->TBytes = 0;
+                }
+                NumDecomPage = CMP_UNC_PAGES * NSlot;
+        } else {
+                NumDecomPage = NumPages;
+        }
+        for (Iter2 = 0; Iter2 < NumCompPages; Iter2++) {
+                if (CheckSwapMapPage (*Offset)) {
+                        (*Offset)++;
+                        if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                                Info->NumPages++;
+                        }
+                }
+                (*Offset)++;
+                Authtags += Dp->Authsize;
+                Count++;
+        }
+        for (Iter2 = 0; Iter2 < NumDecomPage; Iter2++) {
+                DstPfn_z = KernelPfnIndexes[*PfnOffset];
+                if (IS_ZERO_PFN (DstPfn_z)) {
+                        Iter2--;
+                }
+                (*PfnOffset)++;
+        }
+        IncrementIV (IvGlb, sizeof (Dp->Iv), Count);
+        return 0;
+}
+
 static INT32 RestoreSnapshotImage (VOID)
 {
         INT32 Ret = 0, Iter1 = 0;
@@ -1345,6 +1842,13 @@ static INT32 RestoreSnapshotImage (VOID)
         struct BounceTableIterator *Bti = &TableIterator;
         Thread *T[NUM_CORES];
         CHAR8 *ThreadName;
+
+        UINT64 NumCompPages = 0;
+        /* Parameters required for decompression */
+        INT32 DataIndx = 0, BlkLen = 0, j = 0, MetaIndx;
+        UINT64 NumSilverPage = 0, NumGoldPage = 0;
+        UINT8 *BlkArr = NULL; INT32 ExtraDataPage = 0;
+        UINT32 SMPage = 0; UINT64 DstPfn_z;
 
         InitReadMultiThreadEnv ();
         StartMs = GetTimerCountms ();
@@ -1358,7 +1862,42 @@ static INT32 RestoreSnapshotImage (VOID)
                 return -1;
         }
 
-        KernelPfnIndexes = ReadKernelImagePfnIndexes (&Offset);
+        /* IS_COMPRESS function verifies if the hibernation image
+         * has been compressed using LZ4 algorithm.
+         */
+        if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                if (InitBlockArr (&BlkArr)) {
+                    printf ("Block array initialization failed \n");
+                    return -1;
+                }
+
+                /* Determining the count of indexes that need
+                 * to be read for a compressed meta page.
+                 */
+                MetaIndx = (NrMetaPages % CMP_UNC_PAGES) == 0 ?
+                        NrMetaPages / CMP_UNC_PAGES
+                        :
+                        NrMetaPages / CMP_UNC_PAGES + 1;
+
+                for (j = 0; j < MetaIndx; j++) {
+                    NumCompPages += BlkArr[j];
+                }
+
+                SMPage = (FIRST_PFN_INDEX_OFFSET - 1 + NumCompPages)
+                                        /
+                          PFN_INDEXES_PER_PAGE;
+                CmpBuf.Buf = AllocatePages (NrMetaPages + CMP_UNC_PAGES);
+                if (!CmpBuf.Buf) {
+                        printf ("Memory alloc failed Line %d\n", __LINE__);
+                        return -1;
+                }
+        } else {
+                CmpBuf.Buf = NULL;
+                NumCompPages = ENTRIES_PER_SWAPMAP_PAGE - 1;
+        }
+
+        KernelPfnIndexes = ReadKernelImagePfnIndexes (&Offset, &DecInfo,
+                                                      &CmpBuf, NumCompPages);
         if (!KernelPfnIndexes) {
                 return -1;
         }
@@ -1369,64 +1908,101 @@ static INT32 RestoreSnapshotImage (VOID)
                 printf ("Error allocating memory\n");
                 return -1;
         }
+
 #if HIBERNATION_SUPPORT_AES
+        if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                /* Incrementing the offset value in accordance with
+                 * the compressed meta pages and the Swap Map page */
+                Offset = FIRST_PFN_INDEX_OFFSET + NumCompPages + SMPage;
+                /* While decompressing the final meta block unit, if any data
+                 * pages are also decompressed simultaneously, we ensure that
+                 * the PfnOffset is set correctly. Subsequently, once all the
+                 * data pages have been decompressed, we will copy those data
+                 * pages to their respective Pfn offsets.
+                 */
+                ExtraDataPage = (CmpBuf.WPos - CmpBuf.RPos) / PAGE_SIZE;
+
+                for (Iter1 = 0; Iter1 < ExtraDataPage; Iter1++) {
+                        DstPfn_z = KernelPfnIndexes[PfnOffset];
+                        if (IS_ZERO_PFN (DstPfn_z)) {
+                                Iter1--;
+                        }
+                        PfnOffset++;
+                }
+
+                BlkLen = (NrCopyPages + NrMetaPages) / CMP_UNC_PAGES + 1;
+                DataIndx = j, NumCompPages = 0;
+
+                for (j = 0; j < BlkLen; j++) {
+                    NumCompPages += BlkArr[j];
+                }
+
+                NumSilverPage = (NumCompPages * 0.4) / (NUM_SILVER_CORES);
+                NumGoldPage = (NumCompPages * 0.6)
+                                        /
+                              (NUM_CORES - NUM_SILVER_CORES);
+        }
         for (Iter1 = 0; Iter1 < NUM_SILVER_CORES; Iter1++) {
-                INT32 Iter2;
-                UINT64 Count = 0;
-                UINT64 DstPfn_z;
-                gBS->CopyMem (Info[Iter1].Iv, IvGlb, sizeof (Dp->Iv));
-                Info[Iter1].Offset = Offset;
-                Info[Iter1].Authtags = Authtags;
-                Info[Iter1].NumPages = NUM_PAGES_PER_SILVER_CORE;
-                Info[Iter1].KernelPfnIndexes = &KernelPfnIndexes[PfnOffset];
-                for (Iter2 = 0; Iter2 < NUM_PAGES_PER_SILVER_CORE; Iter2++) {
-                        if (CheckSwapMapPage (Offset)) {
-                                Offset++;
-                        }
-                        DstPfn_z = KernelPfnIndexes[PfnOffset];
-                        if (IS_ZERO_PFN (DstPfn_z)) {
-                            Iter2--;
-                        } else {
-                            Offset++;
-                            Authtags += Dp->Authsize;
-                            Count++;
-                        }
-                        PfnOffset++;
+                if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                        Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
+                                                  &PfnOffset, &DataIndx, BlkLen,
+                                                  BlkArr, NumSilverPage
+                                                );
+                } else {
+                        Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
+                                                  &PfnOffset, &DataIndx, BlkLen,
+                                                  BlkArr,
+                                                  NUM_PAGES_PER_SILVER_CORE
+                                                );
                 }
-                IncrementIV (IvGlb, sizeof (Dp->Iv), Count);
+                if (Ret) {
+                    return Ret;
+                }
         }
+
         for (Iter1 = NUM_SILVER_CORES; Iter1 < NUM_CORES - 1; Iter1++) {
-                INT32 Iter2;
-                UINT64 Count = 0;
-                UINT64 DstPfn_z;
-                gBS->CopyMem (Info[Iter1].Iv, IvGlb, sizeof (Dp->Iv));
-                Info[Iter1].Offset = Offset;
-                Info[Iter1].Authtags = Authtags;
-                Info[Iter1].NumPages = NUM_PAGES_PER_GOLD_CORE;
-                Info[Iter1].KernelPfnIndexes = &KernelPfnIndexes[PfnOffset];
-                for (Iter2 = 0; Iter2 < NUM_PAGES_PER_GOLD_CORE; Iter2++) {
-                        if (CheckSwapMapPage (Offset)) {
-                                Offset++;
-                        }
-                        DstPfn_z = KernelPfnIndexes[PfnOffset];
-                        if (IS_ZERO_PFN (DstPfn_z)) {
-                            Iter2--;
-                        } else {
-                            Offset++;
-                            Authtags += Dp->Authsize;
-                            Count++;
-                        }
-                        PfnOffset++;
+                if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                        Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
+                                                  &PfnOffset, &DataIndx, BlkLen,
+                                                  BlkArr, NumGoldPage
+                                                );
+                } else {
+                        Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
+                                                  &PfnOffset, &DataIndx, BlkLen,
+                                                  BlkArr,
+                                                  NUM_PAGES_PER_GOLD_CORE
+                                                );
                 }
-                IncrementIV (IvGlb, sizeof (Dp->Iv), Count);
+                if (Ret) {
+                    return Ret;
+                }
         }
-        Info[Iter1].Authtags = Authtags;
-        gBS->CopyMem (Info[Iter1].Iv, IvGlb, sizeof (Dp->Iv));
 #endif
-        Info[Iter1].Offset = Offset;
-        Info[Iter1].NumPages = NrCopyPages - (4 * NUM_PAGES_PER_SILVER_CORE) -
-                           (3 * NUM_PAGES_PER_GOLD_CORE);
-        Info[Iter1].KernelPfnIndexes = &KernelPfnIndexes[PfnOffset];
+
+        /* Assign the remaining page to the last thread */
+        if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                NumCompPages = 0;
+                for (j = DataIndx; j < BlkLen; j++) {
+                    NumCompPages += BlkArr[j];
+                }
+        }
+        if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
+                                &PfnOffset, &DataIndx, BlkLen, BlkArr,
+                                NumCompPages
+                                );
+        } else {
+                Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
+                                &PfnOffset, &DataIndx, BlkLen, BlkArr,
+                                NrCopyPages - (4 * NUM_PAGES_PER_SILVER_CORE)
+                                                            -
+                                                (3 * NUM_PAGES_PER_GOLD_CORE)
+                                );
+        }
+        if (Ret) {
+                return Ret;
+        }
+
         for (Iter1 = 0; Iter1 < NUM_CORES; Iter1++) {
                 Info[Iter1].DiskReadBuffer = AllocatePages (DISK_BUFFER_PAGES);
                 if (!Info[Iter1].DiskReadBuffer) {
@@ -1506,6 +2082,31 @@ static INT32 RestoreSnapshotImage (VOID)
                         printf ("error in restore_snapshot_image\n");
                         Ret = -1;
                         goto err;
+                }
+        }
+
+        if (IS_COMPRESS (SwsuspHeader->Flags)) {
+                /* Copy data pages to their respective PfnOffsets, starting from
+                 * 0, if any data pages are decompressed during the
+                 * decompression of the final meta page unit.
+                 */
+                if ((CmpBuf.WPos - CmpBuf.RPos) / PAGE_SIZE) {
+                        UINT64 SrcPfn1, DstPfn1;
+                        INT32 Loop = 0, Ind = 0;
+                        SrcPfn1 = (UINT64) (CmpBuf.Buf + CmpBuf.RPos)
+                                                        >> PAGE_SHIFT;
+                        Loop = (CmpBuf.WPos - CmpBuf.RPos) / PAGE_SIZE;
+                        while (Loop > 0) {
+                                DstPfn1 = KernelPfnIndexes[Ind++];
+                                if (IS_ZERO_PFN (DstPfn1)) {
+                                       CopyZeroPageToDst (DstPfn1);
+                                } else {
+                                       CopyPageToDst (SrcPfn1, DstPfn1);
+                                       SrcPfn1++;
+                                       Loop--;
+                                }
+                        }
+                        CmpBuf.RPos = 0, CmpBuf.WPos = 0;
                 }
         }
         BootStatsSetTimeStamp (BS_KERNEL_LOAD_BOOT_END);
