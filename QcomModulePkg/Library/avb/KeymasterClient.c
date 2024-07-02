@@ -24,58 +24,36 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-/*
- * Changes from Qualcomm Innovation Center are provided under the following license:
- *
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
- *
- *  Redistribution and use in source and binary forms, with or without
- *  modification, are permitted (subject to the limitations in the
- *  disclaimer below) provided that the following conditions are met:
- *
- *      * Redistributions of source code must retain the above copyright
- *        notice, this list of conditions and the following disclaimer.
- *
- *      * Redistributions in binary form must reproduce the above
- *        copyright notice, this list of conditions and the following
- *        disclaimer in the documentation and/or other materials provided
- *        with the distribution.
- *
- *      * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
- *        contributors may be used to endorse or promote products derived
- *        from this software without specific prior written permission.
- *
- *  NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
- *  GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
- *  HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
- *   WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- *  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- *  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- *  GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- *  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
- *  IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- *  IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+// Changes from Qualcomm Innovation Center, Inc. are provided
+// under the following license:
+// Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+// SPDX-License-Identifier: BSD-3-Clause-Clear
 
 #include "KeymasterClient.h"
 #include "VerifiedBoot.h"
 #include <Library/BaseMemoryLib.h>
-#include <Library/DebugLib.h>
 #include <Library/Debug.h>
+#include <Library/DebugLib.h>
+#include <Library/DeviceInfo.h>
+#include <Library/LinuxLoaderLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 #include <Protocol/EFIQseecom.h>
+#include <Protocol/EFISPSS.h>
 #include <Protocol/LoadedImage.h>
 #include <Protocol/scm_sip_interface.h>
-#include <Protocol/EFISPSS.h>
-#include <Library/LinuxLoaderLib.h>
-#include <Library/DeviceInfo.h>
 
+#if AUTO_VIRT_ABL
+/* SMCI */
+#include <Protocol/EFIScm.h>
+#include "SmciInvokeUtils.h"
+#define CKMHal_UID 150
+#define CAppClient_UID 0x97U
+static Object AppObj = Object_NULL;
+#else
+/* QSEECOM */
 typedef struct {
   QCOM_QSEECOM_PROTOCOL *QseeComProtocol;
   UINT32 AppId;
@@ -83,6 +61,7 @@ typedef struct {
 
 STATIC KMHandle Handle = {NULL};
 STATIC KeymintSharedInfoStruct SPUKeymintSharedInfo;
+#endif
 
 /**
  * KM Commands supported
@@ -94,8 +73,8 @@ STATIC KeymintSharedInfoStruct SPUKeymintSharedInfo;
 
 typedef enum {
   /*
-         * List the commands supportedin by the hardware.
-         */
+   * List the commands supportedin by the hardware.
+   */
   KEYMASTER_GET_SUPPORTED_ALGORITHMS = (KEYMASTER_CMD_ID + 1UL),
   KEYMASTER_GET_SUPPORTED_BLOCK_MODES = (KEYMASTER_CMD_ID + 2UL),
   KEYMASTER_GET_SUPPORTED_PADDING_MODES = (KEYMASTER_CMD_ID + 3UL),
@@ -160,8 +139,7 @@ typedef struct {
   UINT32 AppMinor;
 } __attribute__ ((packed)) KMGetVersionRsp;
 
-typedef struct
-{
+typedef struct {
   INT32 Status;
 } __attribute__ ((packed)) KMSetVbhRsp;
 
@@ -182,7 +160,7 @@ typedef struct {
 } __attribute__ ((packed)) KMFbeSetSeedRsp;
 
 typedef struct {
-  UINT32 FrsSecLen; /*Holds length of FRS secret*/
+  UINT32 FrsSecLen;                 /*Holds length of FRS secret*/
   uint8_t FrsSec[DICE_HIDDEN_SIZE]; /*Holds plain secret*/
 } __attribute__ ((packed)) KMFrsSec;
 
@@ -196,12 +174,13 @@ typedef struct {
   INT32 Status;
   UINT32 FrsLen;
   UINT32 UdsLen;
-  uint8_t Frs[DICE_HIDDEN_SIZE];/*Factory reset Secret */
-  uint8_t Uds[DICE_CDI_SIZE];/*Unique Device Secret*/
-  UINT32 FrsSecLen; /*Holds length of FRS secret*/
+  uint8_t Frs[DICE_HIDDEN_SIZE];    /*Factory reset Secret */
+  uint8_t Uds[DICE_CDI_SIZE];       /*Unique Device Secret*/
+  UINT32 FrsSecLen;                 /*Holds length of FRS secret*/
   uint8_t FrsSec[DICE_HIDDEN_SIZE]; /*Holds plain secret*/
 } __attribute__ ((packed)) KMGetFRSUDSRsp;
 
+#ifndef AUTO_VIRT_ABL
 STATIC EFI_STATUS ShareKeyMintInfoWithSPU (VOID);
 
 EFI_STATUS
@@ -242,8 +221,9 @@ KeyMasterStartApp (KMHandle *Handle)
       Handle->QseeComProtocol, Handle->AppId, (UINT8 *)&Req, sizeof (Req),
       (UINT8 *)&Rsp, sizeof (Rsp));
   if (Status != EFI_SUCCESS || Rsp.Status != 0 || Rsp.Major < 2) {
-    DEBUG ((EFI_D_ERROR, "KeyMasterStartApp: Get Version err, status: "
-                         "%d, response status: %d, Major: %d\n",
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterStartApp: Get Version err, status: "
+            "%d, response status: %d, Major: %d\n",
             Status, Rsp.Status, Rsp.Major));
     return EFI_LOAD_ERROR;
   }
@@ -251,7 +231,109 @@ KeyMasterStartApp (KMHandle *Handle)
           Handle->AppId, Rsp.Major));
   return Status;
 }
+#else /*SMCI*/
+EFI_STATUS
+KeyMasterStartApp (VOID)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+  KMGetVersionReq Req = {0};
+  KMGetVersionRsp Rsp = {0};
 
+  Object ClientEnvObj = Object_NULL;
+  Object AppClientObj = Object_NULL;
+  Object AppOpenerObj = Object_NULL;
+
+  if (!Object_isNull (AppObj)) {
+    return EFI_SUCCESS;
+  }
+
+  size_t RspLenOut = 0;
+  CONST CHAR8 *kmAppName = "keymaster64";
+
+  QCOM_SCM_PROTOCOL *pQcomScmProtocol = NULL;
+  // Locate QCOM_SCM_PROTOCOL.
+  Status = gBS->LocateProtocol (&gQcomScmProtocolGuid, NULL,
+                                (VOID **)&pQcomScmProtocol);
+  if (Status != EFI_SUCCESS ||
+      (pQcomScmProtocol == NULL)) {
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterStartApp: Locate SCM Protocol failed, Status: (0x%x)\n",
+            Status));
+    Status = ERROR_SECURITY_STATE;
+    return Status;
+  }
+
+  Status = pQcomScmProtocol->ScmGetClientEnv (pQcomScmProtocol, &ClientEnvObj);
+  if (Object_isERROR (Status) ||
+      Object_isNull (ClientEnvObj)) {
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterStartApp: Failed to get Client Env, Status: (0x%x)\n",
+            Status));
+    goto out;
+  }
+
+  Status = IClientEnvOpen (ClientEnvObj, CAppClient_UID, &AppClientObj);
+  if (Object_isERROR (Status) ||
+      Object_isNull (AppClientObj)) {
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterStartApp: Failed to get App Client, Status: (0x%x)\n",
+            Status));
+    goto out;
+  }
+
+  Status = IAppClientGetAppObject (AppClientObj, kmAppName,
+                                   AsciiStrLen (kmAppName), &AppOpenerObj);
+  if (Object_isERROR (Status) ||
+      Object_isNull (AppOpenerObj)) {
+    DEBUG (
+        (EFI_D_ERROR,
+         "KeyMasterStartApp: Failed to get App Opener Object, Status: (0x%x)\n",
+         Status));
+    goto out;
+  }
+
+  Status = IOpener_open (AppOpenerObj, CKMHal_UID, &AppObj);
+  if (Object_isERROR (Status) ||
+      Object_isNull (AppObj)) {
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterStartApp: Failed to get KM TA object, Status: (0x%x)\n",
+            Status));
+    goto out;
+  }
+
+  DEBUG ((EFI_D_INFO, "Keymaster app is loaded and ready to be used\n"));
+
+  Req.CmdId = KEYMASTER_GET_VERSION;
+
+  Status = IKMHal_sendCmd (AppObj, (CONST VOID *)&Req, sizeof (Req),
+                           (VOID *)&Rsp, sizeof (Rsp), &RspLenOut);
+
+  if (Status != 0 ||
+      Rsp.Status != 0 ||
+      Rsp.Major < 2) {
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterStartApp: Get Version err, Status: "
+            "%d, response status: %d, Major: %d\n",
+            Status, Rsp.Status, Rsp.Major));
+    Status = EFI_LOAD_ERROR;
+    goto out;
+  }
+
+  DEBUG ((EFI_D_INFO, "KeyMasterStartApp success, Major: %d\n", Rsp.Major));
+  Status = EFI_SUCCESS;
+  goto out_success;
+
+out:
+  Object_ASSIGN_NULL (AppObj);
+
+out_success:
+  Object_ASSIGN_NULL (ClientEnvObj);
+  Object_ASSIGN_NULL (AppClientObj);
+  Object_ASSIGN_NULL (AppOpenerObj);
+
+  return Status;
+}
+#endif
 EFI_STATUS
 KeyMasterSetRotAndBootState (KMRotAndBootState *BootState)
 {
@@ -265,8 +347,9 @@ KeyMasterSetRotAndBootState (KMRotAndBootState *BootState)
   KMSetRotRsp RotRsp = {0};
   KMSetBootStateReq BootStateReq = {0};
   KMSetBootStateRsp BootStateRsp = {0};
+#ifndef AUTO_VIRT_ABL
   BOOLEAN secure_device = FALSE;
-
+#endif
   if (BootState == NULL) {
     DEBUG ((EFI_D_ERROR, "Invalid parameter BootState\n"));
     return EFI_INVALID_PARAMETER;
@@ -278,13 +361,13 @@ KeyMasterSetRotAndBootState (KMRotAndBootState *BootState)
   switch (BootState->Color) {
   case GREEN:
   case YELLOW:
-    avb_sha256_update (&RotCtx, (const uint8_t *)BootState->PublicKey,
+    avb_sha256_update (&RotCtx, (CONST uint8_t *)BootState->PublicKey,
                        BootState->PublicKeyLength);
-    avb_sha256_update (&RotCtx, (const uint8_t *)&BootState->IsUnlocked,
+    avb_sha256_update (&RotCtx, (CONST uint8_t *)&BootState->IsUnlocked,
                        sizeof (BootState->IsUnlocked));
     break;
   case ORANGE:
-    avb_sha256_update (&RotCtx, (const uint8_t *)&BootState->IsUnlocked,
+    avb_sha256_update (&RotCtx, (CONST uint8_t *)&BootState->IsUnlocked,
                        sizeof (BootState->IsUnlocked));
     break;
   case RED:
@@ -300,8 +383,9 @@ KeyMasterSetRotAndBootState (KMRotAndBootState *BootState)
   case GREEN:
   case YELLOW:
     avb_sha256_init (&BootStateCtx);
-    avb_sha256_update (&BootStateCtx, (const uint8_t *)BootState->PublicKey,
-                       BootState->PublicKeyLength);
+    avb_sha256_update (&BootStateCtx,
+                 (CONST uint8_t *)BootState->PublicKey,
+                  BootState->PublicKeyLength);
     /* BootStateDigest is a fixed size array, cannot be NULL */
     BootStateDigest = (CHAR8 *)avb_sha256_final (&BootStateCtx);
     break;
@@ -315,24 +399,37 @@ KeyMasterSetRotAndBootState (KMRotAndBootState *BootState)
   }
 
   /* Load KeyMaster App */
+#ifndef AUTO_VIRT_ABL
   GUARD (KeyMasterStartApp (&Handle));
-
+#else /*SMCI*/
+  GUARD (KeyMasterStartApp ());
+#endif
   /* Set ROT */
   RotReq.CmdId = KEYMASTER_SET_ROT;
   RotReq.RotOffset = (UINT8 *)&RotReq.RotDigest - (UINT8 *)&RotReq;
   RotReq.RotSize = sizeof (RotReq.RotDigest);
   CopyMem (RotReq.RotDigest, RotDigest, AVB_SHA256_DIGEST_SIZE);
+
+#ifndef AUTO_VIRT_ABL
   SPUKeymintSharedInfo.RootOfTrust = RotReq;
 
   Status = Handle.QseeComProtocol->QseecomSendCmd (
       Handle.QseeComProtocol, Handle.AppId, (UINT8 *)&RotReq, sizeof (RotReq),
       (UINT8 *)&RotRsp, sizeof (RotRsp));
-  if (Status != EFI_SUCCESS || RotRsp.Status != 0) {
-    DEBUG ((EFI_D_ERROR, "KeyMasterSendRotAndBootState: Set ROT err, "
-                         "Status: %r, response status: %d\n",
+#else /*SMCI*/
+  size_t RspLenOut = 0;
+  Status = IKMHal_sendCmd (AppObj, (CONST VOID *)&RotReq, sizeof (RotReq),
+                           (VOID *)&RotRsp, sizeof (RotRsp), &RspLenOut);
+#endif
+  if (Status != EFI_SUCCESS ||
+      RotRsp.Status != 0) {
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterSendRotAndBootState: Set ROT err, "
+            "Status: %r, response status: %d\n",
             Status, RotRsp.Status));
     return EFI_LOAD_ERROR;
   }
+  DEBUG ((EFI_D_INFO, "KeyMasterSetRotAndBootState Set RoT success\n"));
 
   /* Set Boot State */
   BootStateReq.CmdId = KEYMASTER_SET_BOOT_STATE;
@@ -346,18 +443,28 @@ KeyMasterSetRotAndBootState (KMRotAndBootState *BootState)
   BootStateReq.BootState.SystemVersion = BootState->SystemVersion;
   CopyMem (BootStateReq.BootState.PublicKey, BootStateDigest,
            AVB_SHA256_DIGEST_SIZE);
+#ifndef AUTO_VIRT_ABL
   SPUKeymintSharedInfo.BootInfo = BootStateReq;
 
   Status = Handle.QseeComProtocol->QseecomSendCmd (
       Handle.QseeComProtocol, Handle.AppId, (UINT8 *)&BootStateReq,
       sizeof (BootStateReq), (UINT8 *)&BootStateRsp, sizeof (BootStateRsp));
-  if (Status != EFI_SUCCESS || BootStateRsp.Status != 0) {
-    DEBUG ((EFI_D_ERROR, "KeyMasterSendRotAndBootState: Set BootState err, "
-                         "Status: %r, response status: %d\n",
+#else /*SMCI*/
+  Status = IKMHal_sendCmd (AppObj, (CONST VOID *)&BootStateReq,
+                           sizeof (BootStateReq), (VOID *)&BootStateRsp,
+                           sizeof (BootStateRsp), &RspLenOut);
+#endif
+  if (Status != EFI_SUCCESS ||
+      BootStateRsp.Status != 0) {
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterSendRotAndBootState: Set BootState err, "
+            "Status: %r, response status: %d\n",
             Status, BootStateRsp.Status));
     return EFI_LOAD_ERROR;
   }
+  DEBUG ((EFI_D_INFO, "KeyMasterSetRotAndBootState Set Boot State success\n"));
 
+#ifndef AUTO_VIRT_ABL
   /* Provide boot tamper state to TZ */
   if (((Status = IsSecureDevice (&secure_device)) == EFI_SUCCESS) &&
       secure_device && (BootState->Color != GREEN)) {
@@ -376,11 +483,13 @@ KeyMasterSetRotAndBootState (KMRotAndBootState *BootState)
       }
     }
   }
+#endif
 
   DEBUG ((EFI_D_VERBOSE, "KeyMasterSetRotAndBootState success\n"));
   return Status;
 }
 
+#ifndef AUTO_VIRT_ABL
 EFI_STATUS
 SetVerifiedBootHash (CONST CHAR8 *Vbh, UINTN VbhSize)
 {
@@ -401,15 +510,17 @@ SetVerifiedBootHash (CONST CHAR8 *Vbh, UINTN VbhSize)
   SPUKeymintSharedInfo.Vbh = VbhReq;
 
   Status = Handle.QseeComProtocol->QseecomSendCmd (
-      Handle.QseeComProtocol, Handle.AppId, (UINT8 *)&VbhReq,
-      sizeof (VbhReq), (UINT8 *)&VbhRsp, sizeof (VbhRsp));
+      Handle.QseeComProtocol, Handle.AppId, (UINT8 *)&VbhReq, sizeof (VbhReq),
+      (UINT8 *)&VbhRsp, sizeof (VbhRsp));
+
   if (Status != EFI_SUCCESS ||
-                VbhRsp.Status != 0) {
-    DEBUG ((EFI_D_ERROR, "Set Vbh Error, "
-                         "Status: %r, response status: %d\n",
+      VbhRsp.Status != 0) {
+    DEBUG ((EFI_D_ERROR,
+            "Set Vbh Error, "
+            "Status: %r, response status: %d\n",
             Status, VbhRsp.Status));
     if (Status == EFI_SUCCESS &&
-                VbhRsp.Status == KM_ERROR_INVALID_TAG) {
+        VbhRsp.Status == KM_ERROR_INVALID_TAG) {
       DEBUG ((EFI_D_ERROR, "VBH not supported in keymaster\n"));
       return EFI_SUCCESS;
     }
@@ -425,6 +536,48 @@ SetVerifiedBootHash (CONST CHAR8 *Vbh, UINTN VbhSize)
 
   return EFI_SUCCESS;
 }
+#else /*SMCI*/
+EFI_STATUS
+SetVerifiedBootHash (CONST CHAR8 *Vbh, UINTN VbhSize)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+  KMSetVbhReq VbhReq = {0};
+  KMSetVbhRsp VbhRsp = {0};
+
+  if (!Vbh ||
+      VbhSize != sizeof (VbhReq.Vbh)) {
+    DEBUG ((EFI_D_ERROR, "Vbh input params invalid\n"));
+    return EFI_INVALID_PARAMETER;
+  }
+
+  /* Load KeyMaster App */
+  GUARD (KeyMasterStartApp ());
+  VbhReq.CmdId = KEYMASTER_SET_VBH;
+  CopyMem (VbhReq.Vbh, Vbh, VbhSize);
+
+  size_t RspLenOut = 0;
+  /* Load KeyMaster App */
+  GUARD (KeyMasterStartApp ());
+  Status = IKMHal_sendCmd (AppObj, (CONST VOID *)&VbhReq, sizeof (VbhReq),
+                           (VOID *)&VbhRsp, sizeof (VbhRsp), &RspLenOut);
+
+  if (Status != EFI_SUCCESS ||
+      VbhRsp.Status != 0) {
+    DEBUG ((EFI_D_ERROR,
+            "Set Vbh Error, "
+            "Status: %r, response status: %d\n",
+            Status, VbhRsp.Status));
+    if (Status == EFI_SUCCESS &&
+        VbhRsp.Status == KM_ERROR_INVALID_TAG) {
+      DEBUG ((EFI_D_ERROR, "VBH not supported in keymaster\n"));
+      return EFI_SUCCESS;
+    }
+    return EFI_LOAD_ERROR;
+  }
+
+  return EFI_SUCCESS;
+}
+#endif
 
 #if AVB_ENABLE_LEGACY_FEATURE
 /* To use the code protected by this flag, add the flag to
@@ -435,19 +588,26 @@ KeyMasterGetDateSupport (BOOLEAN *Supported)
   EFI_STATUS Status = EFI_SUCCESS;
   KMGetDateSupportReq Req = {0};
   KMGetDateSupportRsp Rsp = {0};
-
-  GUARD (KeyMasterStartApp (&Handle));
   Req.CmdId = KEYMASTER_GET_DATE_SUPPORT;
+#ifndef AUTO_VIRT_ABL
+  GUARD (KeyMasterStartApp (&Handle));
   Status = Handle.QseeComProtocol->QseecomSendCmd (
       Handle.QseeComProtocol, Handle.AppId, (UINT8 *)&Req, sizeof (Req),
       (UINT8 *)&Rsp, sizeof (Rsp));
+#else /*SMCI*/
+  GUARD (KeyMasterStartApp ());
+  size_t RspLenOut = 0;
+  Status = IKMHal_sendCmd (AppObj, (CONST VOID *)&Req, sizeof (Req),
+                           (VOID *)&Rsp, sizeof (Rsp), &RspLenOut);
+#endif
   if (Status != EFI_SUCCESS ||
-                Rsp.Status != 0 ) {
-    DEBUG ((EFI_D_ERROR, "Keymaster: Get date support error, status: "
-                         "%d, response status: %d\n",
+      Rsp.Status != 0) {
+    DEBUG ((EFI_D_ERROR,
+            "Keymaster: Get date support error, status: "
+            "%d, response status: %d\n",
             Status, Rsp.Status));
     if (Status == EFI_SUCCESS &&
-                Rsp.Status == KM_ERROR_INVALID_TAG) {
+        Rsp.Status == KM_ERROR_INVALID_TAG) {
       DEBUG ((EFI_D_ERROR, "Date in patch level not supported in keymaster\n"));
       *Supported = FALSE;
       return EFI_SUCCESS;
@@ -477,34 +637,43 @@ KeyMasterSetRotForLE (KMRotAndBootStateForLE *BootState)
   /* Compute ROT digest */
   avb_sha256_init (&RotCtx);
   avb_sha256_update (&RotCtx, BootState->PublicKeyMod,
-                       BootState->PublicKeyModLength);
+                     BootState->PublicKeyModLength);
   avb_sha256_update (&RotCtx, BootState->PublicKeyExp,
-                       BootState->PublicKeyExpLength);
+                     BootState->PublicKeyExpLength);
   avb_sha256_update (&RotCtx, &BootState->IsUnlocked,
-                       sizeof (BootState->IsUnlocked));
+                     sizeof (BootState->IsUnlocked));
   /* RotDigest is a fixed size array, cannot be NULL */
   RotDigest = (CHAR8 *)avb_sha256_final (&RotCtx);
   if (!*RotDigest) {
-      DEBUG ((EFI_D_ERROR, "Failed to set ROT Digest\n"));
-      return EFI_INVALID_PARAMETER;
+    DEBUG ((EFI_D_ERROR, "Failed to set ROT Digest\n"));
+    return EFI_INVALID_PARAMETER;
   }
-
   /* Load KeyMaster App */
+#ifndef AUTO_VIRT_ABL
   GUARD (KeyMasterStartApp (&Handle));
+#else /*SMCI*/
+  GUARD (KeyMasterStartApp ());
+#endif
 
   /* Set ROT */
   RotReq.CmdId = KEYMASTER_SET_ROT;
   RotReq.RotOffset = (UINT8 *)&RotReq.RotDigest - (UINT8 *)&RotReq;
   RotReq.RotSize = sizeof (RotReq.RotDigest);
   CopyMem (RotReq.RotDigest, RotDigest, AVB_SHA256_DIGEST_SIZE);
-
+#ifndef AUTO_VIRT_ABL
   Status = Handle.QseeComProtocol->QseecomSendCmd (
       Handle.QseeComProtocol, Handle.AppId, (UINT8 *)&RotReq, sizeof (RotReq),
       (UINT8 *)&RotRsp, sizeof (RotRsp));
+#else /*SMCI*/
+  size_t RspLenOut = 0;
+  Status = IKMHal_sendCmd (AppObj, (CONST VOID *)&RotReq, sizeof (RotReq),
+                           (VOID *)&RotRsp, sizeof (RotRsp), &RspLenOut);
+#endif
   if (Status != EFI_SUCCESS ||
-        RotRsp.Status != 0) {
-    DEBUG ((EFI_D_ERROR, "KeyMasterSendRotAndBootState: Set ROT err, "
-                         "Status: %r, response status: %d\n",
+      RotRsp.Status != 0) {
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterSendRotAndBootState: Set ROT err, "
+            "Status: %r, response status: %d\n",
             Status, RotRsp.Status));
     return EFI_LOAD_ERROR;
   }
@@ -513,21 +682,33 @@ KeyMasterSetRotForLE (KMRotAndBootStateForLE *BootState)
   return Status;
 }
 
-EFI_STATUS KeyMasterFbeSetSeed (VOID)
+EFI_STATUS
+KeyMasterFbeSetSeed (VOID)
 {
   EFI_STATUS Status = EFI_SUCCESS;
   KMFbeSetSeedReq Req = {0};
   KMFbeSetSeedRsp Rsp = {0};
-
+  /* Load KeyMaster App */
+#ifndef AUTO_VIRT_ABL
   GUARD (KeyMasterStartApp (&Handle));
+#else /*SMCI*/
+  GUARD (KeyMasterStartApp ());
+#endif
   Req.CmdId = KEYMASTER_FBE_SET_SEED;
+#ifndef AUTO_VIRT_ABL
   Status = Handle.QseeComProtocol->QseecomSendCmd (
       Handle.QseeComProtocol, Handle.AppId, (UINT8 *)&Req, sizeof (Req),
       (UINT8 *)&Rsp, sizeof (Rsp));
+#else /*SMCI*/
+  size_t RspLenOut = 0;
+  Status = IKMHal_sendCmd (AppObj, (CONST VOID *)&Req, sizeof (Req),
+                           (VOID *)&Rsp, sizeof (Rsp), &RspLenOut);
+#endif
   if (Status != EFI_SUCCESS ||
-                Rsp.Status != 0 ) {
-    DEBUG ((EFI_D_ERROR, "Keymaster: fbe set seed error, status: "
-                         "%d, response status: %d\n",
+      Rsp.Status != 0) {
+    DEBUG ((EFI_D_ERROR,
+            "Keymaster: fbe set seed error, status: "
+            "%d, response status: %d\n",
             Status, Rsp.Status));
     return EFI_LOAD_ERROR;
   }
@@ -535,11 +716,13 @@ EFI_STATUS KeyMasterFbeSetSeed (VOID)
   return Status;
 }
 
-STATIC EFI_STATUS ShareKeyMintInfoWithSPU (VOID)
+#ifndef AUTO_VIRT_ABL
+STATIC EFI_STATUS
+ShareKeyMintInfoWithSPU (VOID)
 {
-  SpssProtocol* SPSSProtocol;
+  SpssProtocol *SPSSProtocol;
   EFI_STATUS Status = gBS->LocateProtocol (&gEfiSPSSProtocolGuid, NULL,
-                                (VOID **)&(SPSSProtocol));
+                                           (VOID **)&(SPSSProtocol));
 
   if (Status == EFI_NOT_FOUND) {
     /* This chipset doesn't have support for sharing keymint info */
@@ -556,15 +739,17 @@ STATIC EFI_STATUS ShareKeyMintInfoWithSPU (VOID)
   }
 
   // Clear data from memory
-  SetMem ( (VOID*) (&SPUKeymintSharedInfo), sizeof (SPUKeymintSharedInfo), 0);
+  SetMem ((VOID *)(&SPUKeymintSharedInfo), sizeof (SPUKeymintSharedInfo), 0);
 
   return Status;
 }
+#endif
 
 /* KeyMasterGetFRSAndUDS will fetch Unique Device Secret(UDS) and
  * Factory Reset Sequence(FRS) from Keymint.
  */
-EFI_STATUS KeyMasterGetFRSAndUDS (BccParams_t *bcc_params)
+EFI_STATUS
+KeyMasterGetFRSAndUDS (BccParams_t *bcc_params)
 {
   EFI_STATUS Status = EFI_SUCCESS;
   KMGetFRSUDSReq FRSUDSReq = {0};
@@ -574,10 +759,10 @@ EFI_STATUS KeyMasterGetFRSAndUDS (BccParams_t *bcc_params)
   if (bcc_params == NULL ||
       bcc_params->FRS == NULL ||
       bcc_params->UDS == NULL) {
-        DEBUG ((EFI_D_ERROR, "KeyMasterGetFRSAndUDS: Parameter received"
-                "is NULL"));
-        Status = EFI_INVALID_PARAMETER;
-        goto out;
+    DEBUG ((EFI_D_ERROR, "KeyMasterGetFRSAndUDS: Parameter received"
+                         "is NULL"));
+    Status = EFI_INVALID_PARAMETER;
+    goto out;
   }
 
   Devinfo = AllocateZeroPool (sizeof (DeviceInfo));
@@ -586,15 +771,22 @@ EFI_STATUS KeyMasterGetFRSAndUDS (BccParams_t *bcc_params)
     goto out;
   }
 
+  /* Load KeyMaster App */
+#ifndef AUTO_VIRT_ABL
   GUARD (KeyMasterStartApp (&Handle));
+#else /*SMCI*/
+  GUARD (KeyMasterStartApp ());
+#endif
   FRSUDSReq.CmdId = KEYMINT_GENERATE_FRS_AND_UDS;
 
   /* Read FDR Flag and FRS secret from DevInfo */
-  Status = ReadWriteDeviceInfo (READ_CONFIG, (VOID *)Devinfo,
-                                sizeof (DeviceInfo));
+  Status =
+      ReadWriteDeviceInfo (READ_CONFIG, (VOID *)Devinfo, sizeof (DeviceInfo));
   if (Status != EFI_SUCCESS) {
-    DEBUG ((EFI_D_ERROR, "KeyMasterGetFRSAndUDS: Unable to Read Device Info:"
-            " %r\n", Status));
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterGetFRSAndUDS: Unable to Read Device Info:"
+            " %r\n",
+            Status));
     goto out;
   }
 
@@ -607,32 +799,39 @@ EFI_STATUS KeyMasterGetFRSAndUDS (BccParams_t *bcc_params)
     CopyMem (FRSUDSReq.FrsSecData.FrsSec, Devinfo->FrsSec,
              FRSUDSReq.FrsSecData.FrsSecLen);
   }
-
+#ifndef AUTO_VIRT_ABL
   Status = Handle.QseeComProtocol->QseecomSendCmd (
-           Handle.QseeComProtocol, Handle.AppId, (UINT8 *)&FRSUDSReq,
-           sizeof (FRSUDSReq), (UINT8 *)&FRSUDSRsp, sizeof (FRSUDSRsp));
+      Handle.QseeComProtocol, Handle.AppId, (UINT8 *)&FRSUDSReq,
+      sizeof (FRSUDSReq), (UINT8 *)&FRSUDSRsp, sizeof (FRSUDSRsp));
+#else /*SMCI*/
+  size_t RspLenOut = 0;
+  Status = IKMHal_sendCmd (AppObj, (CONST VOID *)&FRSUDSReq, sizeof (FRSUDSReq),
+                           (VOID *)&FRSUDSRsp, sizeof (FRSUDSRsp), &RspLenOut);
+#endif
   if (Status != EFI_SUCCESS ||
       FRSUDSRsp.Status != 0) {
-      DEBUG ((EFI_D_ERROR, "KeyMasterGetFRSAndUDS: Get FRSAndUDS err, "
-              "Status: %r, response status: %d\n",
-              Status, FRSUDSRsp.Status));
-      Status = EFI_LOAD_ERROR;
-      goto out;
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterGetFRSAndUDS: Get FRSAndUDS err, "
+            "Status: %r, response status: %d\n",
+            Status, FRSUDSRsp.Status));
+    Status = EFI_LOAD_ERROR;
+    goto out;
   }
 
   if (FRSUDSRsp.FrsLen != DICE_HIDDEN_SIZE &&
       FRSUDSRsp.UdsLen != DICE_CDI_SIZE) {
-      DEBUG ((EFI_D_ERROR, "KeyMasterGetFRSAndUDS: Invalid Length Received:"
-              " FrsLen=%d UdsLen=%d\n", FRSUDSRsp.FrsLen,
-              FRSUDSRsp.UdsLen));
-      Status = EFI_LOAD_ERROR;
-      goto out;
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterGetFRSAndUDS: Invalid Length Received:"
+            " FrsLen=%d UdsLen=%d\n",
+            FRSUDSRsp.FrsLen, FRSUDSRsp.UdsLen));
+    Status = EFI_LOAD_ERROR;
+    goto out;
   }
   if (!FRSUDSRsp.Frs &&
       !FRSUDSRsp.Uds) {
-      DEBUG ((EFI_D_ERROR, "KeyMasterGetFRSAndUDS: Response not received\n"));
-      Status = EFI_LOAD_ERROR;
-      goto out;
+    DEBUG ((EFI_D_ERROR, "KeyMasterGetFRSAndUDS: Response not received\n"));
+    Status = EFI_LOAD_ERROR;
+    goto out;
   }
 
   /* Reset the FDR flag in DevInfo */
@@ -645,11 +844,13 @@ EFI_STATUS KeyMasterGetFRSAndUDS (BccParams_t *bcc_params)
   CopyMem (Devinfo->FrsSec, FRSUDSRsp.FrsSec, FRSUDSRsp.FrsSecLen);
 
   /* Write in devinfo, only when secret is updated or FDR flag is set*/
-  Status = ReadWriteDeviceInfo (WRITE_CONFIG, (VOID *)Devinfo,
-                                sizeof (DeviceInfo));
+  Status =
+      ReadWriteDeviceInfo (WRITE_CONFIG, (VOID *)Devinfo, sizeof (DeviceInfo));
   if (Status != EFI_SUCCESS) {
-    DEBUG ((EFI_D_ERROR, "KeyMasterGetFRSAndUDS: Unable to Write in"
-            " Device Info: %r\n", Status));
+    DEBUG ((EFI_D_ERROR,
+            "KeyMasterGetFRSAndUDS: Unable to Write in"
+            " Device Info: %r\n",
+            Status));
     goto out;
   }
 

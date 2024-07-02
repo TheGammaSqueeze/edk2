@@ -250,13 +250,6 @@ WriteBlockToPartition (EFI_BLOCK_IO_PROTOCOL *BlockIo,
 
 VOID StoreRootDeviceType (VOID);
 
-#ifdef AUTO_VIRT_ABL
-EFI_STATUS
-LoadImageFromVirtioTLB (VOID *ImageBuffer,
-                UINT32 *ImageSize,
-                EFI_BLOCK_IO_PROTOCOL *BlkIo);
-#endif
-
 #ifdef AUDIO_FRAMEWORK
 STATIC inline CHAR8* GetAudioFw (VOID)
 {

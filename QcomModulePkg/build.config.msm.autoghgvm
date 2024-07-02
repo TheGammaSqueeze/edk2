@@ -10,6 +10,7 @@ DEVICE_STATUS="DEFAULT_UNLOCK=true"
 DISABLE_PARALLEL_DOWNLOAD_FLASH=1
 AUTO_VIRT_ABL=1
 DISABLE_KERNEL_PROTOCOL=1
+VERIFIED_BOOT_ENABLED=1
 
 ################################################################################
 . ${ROOT_DIR}/${ABL_SRC}/QcomModulePkg/build.config.msm.common
