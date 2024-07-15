@@ -667,20 +667,11 @@ STATIC EFI_STATUS GetPlatformMatchDtb (DtInfo * CurDtbInfo,
     /*Compare msm-id of the dtb vs Board*/
     CurDtbInfo->DtPlatformId =
         fdt32_to_cpu (((struct plat_id *)PlatProp)->platform_id);
-    CurDtbInfo->DtPackageId =
-        fdt32_to_cpu (((struct plat_id *)PlatProp)->platform_id) &
-        PACKAGE_ID_MASK;
     DEBUG ((EFI_D_VERBOSE, "Boardsocid = %x, Dtsocid = %x\n",
             (BoardPlatformRawChipId () & SOC_MASK),
             (CurDtbInfo->DtPlatformId & SOC_MASK)));
-    DEBUG ((EFI_D_VERBOSE, "(PackageID) Boardsocid = %x, Dtsocid = %x\n",
-            (BoardPlatformRawChipId () | ((BoardPlatformPackageId () & 0x1) <<
-             PLATFORM_PACKAGE_SHIFT)), CurDtbInfo->DtPlatformId));
-    DEBUG ((EFI_D_VERBOSE, "BoardPackage = %x, DtPackage = %x\n",
-            ((BoardPlatformPackageId () & 0x1) << PLATFORM_PACKAGE_SHIFT),
-            CurDtbInfo->DtPackageId));
-    if ((BoardPlatformRawChipId () | ((BoardPlatformPackageId () & 0x1) <<
-        PLATFORM_PACKAGE_SHIFT)) == CurDtbInfo->DtPlatformId) {
+    if ((BoardPlatformRawChipId () & SOC_MASK) ==
+        (CurDtbInfo->DtPlatformId & SOC_MASK)) {
       CurDtbInfo->DtMatchVal |= BIT (SOC_MATCH);
     } else {
       DEBUG ((EFI_D_VERBOSE, "qcom,msm-id does not match\n"));
@@ -714,6 +705,24 @@ STATIC EFI_STATUS GetPlatformMatchDtb (DtInfo * CurDtbInfo,
     } else {
       DEBUG ((EFI_D_VERBOSE, "soc foundry does not match\n"));
       /* If it's neither exact nor default match don't select dtb */
+      CurDtbInfo->DtMatchVal = BIT (NONE_MATCH);
+      return EFI_NOT_FOUND;
+    }
+    /* Compare Package Id of dtb vs Board */
+    CurDtbInfo->DtPackageId =
+        fdt32_to_cpu (((struct plat_id *)PlatProp)->platform_id) &
+        PACKAGE_ID_MASK;
+    DEBUG ((EFI_D_VERBOSE, "BoardPackage = %x, DtPackage = %x\n",
+            (BoardPlatformPackageId () << PLATFORM_PACKAGE_SHIFT),
+            CurDtbInfo->DtPackageId));
+    if ((CurDtbInfo->DtPackageId ==
+        ((BoardPlatformPackageId () & 0x1) << PLATFORM_PACKAGE_SHIFT))) {
+      CurDtbInfo->DtMatchVal |= BIT (PACKAGE_EXACT_MATCH);
+    } else if (CurDtbInfo->DtPackageId == 0) {
+      CurDtbInfo->DtMatchVal |= BIT (PACKAGE_DEFAULT_MATCH);
+    } else {
+      DEBUG ((EFI_D_VERBOSE, "soc package does not match\n"));
+      /* If it's not an exact or default match don't select dtb */
       CurDtbInfo->DtMatchVal = BIT (NONE_MATCH);
       return EFI_NOT_FOUND;
     }
