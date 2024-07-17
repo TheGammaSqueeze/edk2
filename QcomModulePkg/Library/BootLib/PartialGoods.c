@@ -512,7 +512,7 @@ static struct PartialGoods PartialGoodsMmType[] = {
      {"remoteproc-adsp", "status", "ok", "no"}},
     {BIT (EFICHIPINFO_PART_MODEM),
      "/soc",
-     {"remoteproc-mss", "status", "ok", "no"}},
+     {"qcom,mss", "status", "ok", "no"}},
     {(BIT (EFICHIPINFO_PART_MODEM)
      | BIT (EFICHIPINFO_PART_WLAN)
      | BIT (EFICHIPINFO_PART_NAV)),
