@@ -80,8 +80,9 @@ typedef struct _EFI_CHIPINFO_PROTOCOL EFI_CHIPINFO_PROTOCOL;
 #define EFI_CHIPINFO_PROTOCOL_REVISION_4  0x0000000000010004
 #define EFI_CHIPINFO_PROTOCOL_REVISION_5  0x0000000000010005
 #define EFI_CHIPINFO_PROTOCOL_REVISION_6  0x0000000000010006
+#define EFI_CHIPINFO_PROTOCOL_REVISION_7  0x0000000000010007
 
-#define EFI_CHIPINFO_PROTOCOL_REVISION EFI_CHIPINFO_PROTOCOL_REVISION_6
+#define EFI_CHIPINFO_PROTOCOL_REVISION EFI_CHIPINFO_PROTOCOL_REVISION_7
 
 
 /*  Protocol GUID definition */
@@ -681,6 +682,33 @@ EFI_STATUS
   OUT UINT32 *pnVal
   );
 
+/* ============================================================================
+**  Function : EFI_ChipInfo_GetNumCPUCores
+** ============================================================================
+*/
+/** @ingroup efi_chipInfo_protocol_apis
+ * @par Summary
+ * Get number of core for reuested cluster.
+ *
+ * @param[in]   NumCpuCluster   The cluster for which number of cores info
+ *                            requested
+ * @param[out]  PnCores        Number of cores in this cluster.
+ *
+ * @return
+ * EFI_SUCCESS        -- Function completed successfully \n
+ * EFI_INVALID_PARAMETER  -- pointer is invalid; \n
+ * EFI_NOT_READY          -- this function was called before EFIChipInfo has \n
+ *                            initialized. *pnCores will not be updated.
+ * EFI_NOT_FOUND      -- The provided nCPUCluster is outside the range of
+ *                       supported clusters \n
+ * EFI_PROTOCOL_ERROR -- Other error occured during the operation
+ */
+typedef
+EFI_STATUS
+(EFIAPI *EFI_CHIPINFO_GETNUMCPUCORES)(IN EFI_CHIPINFO_PROTOCOL *This,
+                              IN  UINT32 NumCpuCluster,
+                              OUT UINT32 *PnCores);
+
 /*===========================================================================
   PROTOCOL INTERFACE
 ===========================================================================*/
@@ -715,7 +743,8 @@ struct _EFI_CHIPINFO_PROTOCOL {
   EFI_CHIPINFO_GETDISABLEDFEATURES GetDisabledFeatures;
   EFI_CHIPINFO_ISPARTDISABLED IsPartDisabled;
   EFI_CHIPINFO_GETDISABLEDCPUS GetDisabledCPUs;
-   EFI_CHIPINFO_GETRAWPACKAGETYPE GetRawPackageType;
+  EFI_CHIPINFO_GETRAWPACKAGETYPE GetRawPackageType;
+  EFI_CHIPINFO_GETNUMCPUCORES GetNumCPUCores; /* PROTOCOL_REVISION_7 */
 };
 
 #endif /* __EFICHIPINFO_H__ */
