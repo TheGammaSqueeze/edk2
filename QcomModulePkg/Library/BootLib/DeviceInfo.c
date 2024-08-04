@@ -29,7 +29,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -307,6 +307,56 @@ UpdateDevInfo (CHAR16 *Pname, CHAR8 *ImgVersion)
   return Status;
 }
 
+
+#ifdef AUTO_VIRT_ABL
+STATIC EFI_STATUS
+ResetDeviceStateAndRecovery (UINT32 Type, BOOLEAN State)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+  struct RecoveryMessage Msg;
+  EFI_GUID Ptype = gEfiMiscPartitionGuid;
+
+  Status = ResetDeviceState ();
+  if (Status != EFI_SUCCESS) {
+    if (Type == UNLOCK) {
+      SetUnlockValue (!State);
+    } else if (Type == UNLOCK_CRITICAL) {
+      SetUnlockCriticalValue (!State);
+    }
+
+    DEBUG ((EFI_D_ERROR, "Unable to set the Value: %r", Status));
+    return Status;
+  }
+
+  gBS->SetMem ((VOID *)&Msg, sizeof (Msg), 0);
+  Status = AsciiStrnCpyS (Msg.recovery, sizeof (Msg.recovery),
+                          RECOVERY_WIPE_DATA, AsciiStrLen (RECOVERY_WIPE_DATA));
+  if (Status == EFI_SUCCESS) {
+    Status = WriteToPartition (&Ptype, &Msg, sizeof (Msg));
+  }
+
+  return Status;
+}
+
+
+STATIC EFI_STATUS
+SetResetDeviceStateValue (BOOLEAN State)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+
+  DEBUG ((EFI_D_VERBOSE, "SetResetDeviceStateValue\n"));
+  DevInfo.IsResetDeviceState = State;
+  Status = ReadWriteDeviceInfo (WRITE_CONFIG, &DevInfo, sizeof (DevInfo));
+  if (Status != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "Unable set the IsResetDeviceState value: %r\n",
+                         Status));
+    return Status;
+  }
+
+  return Status;
+}
+#endif
+
 EFI_STATUS DeviceInfoInit (VOID)
 {
   EFI_STATUS Status = EFI_SUCCESS;
@@ -319,6 +369,23 @@ EFI_STATUS DeviceInfoInit (VOID)
       return Status;
     }
 
+#ifdef AUTO_VIRT_ABL
+    if (DevInfo.IsResetDeviceState == TRUE) {
+      DEBUG ((EFI_D_VERBOSE, "Call ResetDeviceStateAndRecovery\n"));
+      if (DevInfo.Type == UNLOCK) {
+        Status = ResetDeviceStateAndRecovery (UNLOCK, DevInfo.is_unlocked);
+      } else if (DevInfo.Type == UNLOCK_CRITICAL) {
+        Status = ResetDeviceStateAndRecovery (UNLOCK_CRITICAL,
+                                             DevInfo.is_unlock_critical);
+      }
+
+      if (Status == EFI_SUCCESS) {
+        Status = SetResetDeviceStateValue (FALSE);
+      } else {
+        DEBUG ((EFI_D_ERROR, "Unable to Reset Device State: %r\n", Status));
+      }
+    }
+#endif
     FirstReadDevInfo = FALSE;
   }
 
@@ -329,6 +396,9 @@ EFI_STATUS DeviceInfoInit (VOID)
     DevInfo.user_public_key_length = 0;
     gBS->SetMem (DevInfo.rollback_index, sizeof (DevInfo.rollback_index), 0);
     gBS->SetMem (DevInfo.user_public_key, sizeof (DevInfo.user_public_key), 0);
+#ifdef AUTO_VIRT_ABL
+    DevInfo.IsResetDeviceState = FALSE;
+#endif
     if (IsSecureBootEnabled ()) {
       DevInfo.is_unlocked = FALSE;
       DevInfo.is_unlock_critical = FALSE;

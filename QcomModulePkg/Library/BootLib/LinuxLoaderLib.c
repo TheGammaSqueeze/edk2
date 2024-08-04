@@ -302,10 +302,18 @@ GetBlkIOHandles (IN UINT32 SelectionAttrib,
 
       /* Check if the last node is Harddrive Device path that contains the
        * Partition information */
+#ifndef AUTO_VIRT_ABL
       if (Partition->Header.Type == MEDIA_DEVICE_PATH &&
           Partition->Header.SubType == MEDIA_HARDDRIVE_DP &&
           (Partition->Header.Length[0] | (Partition->Header.Length[1] << 8)) ==
               sizeof (*Partition)) {
+#else
+      if (Partition->Header.Type == HARDWARE_DEVICE_PATH &&
+          Partition->Header.SubType == HW_VENDOR_DP &&
+          (Partition->Header.Length[0] | (Partition->Header.Length[1] << 8)) ==
+              (sizeof (VENDOR_DEVICE_PATH) + sizeof (UINT64))) {
+#endif
+
         PartitionOut = Partition;
 
         if ((SelectionAttrib & BLK_IO_SEL_PARTITIONED_GPT) == 0)
