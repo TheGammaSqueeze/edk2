@@ -82,6 +82,8 @@
 #include "BootLinux.h"
 #include "BootStats.h"
 #include "UpdateDeviceTree.h"
+#include "Board.h"
+#include <Protocol/EFIPlatformInfoTypes.h>
 #include "libfdt.h"
 #include "Bootconfig.h"
 #include <ufdt_overlay.h>
@@ -1832,7 +1834,8 @@ BootLinux (BootInfo *Info)
   }
 
   Status = LoadAddrAndDTUpdate (Info, &BootParamlistPtr);
-  if (Status != EFI_SUCCESS) {
+  if (Status != EFI_SUCCESS &&
+          BoardPlatformType () != EFI_PLATFORMINFO_TYPE_RUMI) {
        return Status;
   }
 
