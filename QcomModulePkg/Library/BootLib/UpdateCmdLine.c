@@ -1218,10 +1218,10 @@ Update_PartialGoods_Bootconfig (UINT32 HeaderVersion,
        Iter < MIN (EFICHIPINFO_NUM_PARTS, ARRAY_SIZE (ChipInfoPartTypeStr));
        Iter++) {
     if (PartialGoodsMMValue & (1 << Iter)) {
-      QSPAPropValue = "1";
+      QSPAPropValue = "disabled";
     }
     else {
-      QSPAPropValue = "0";
+      QSPAPropValue = "enabled";
     }
     AsciiSPrint (QSPAPropName, MAX_PART_NAME_LEN, "%a%a=", QSPAPrefix,
                  ChipInfoPartTypeStr[Iter]);
