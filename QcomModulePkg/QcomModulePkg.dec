@@ -25,10 +25,9 @@
 # * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
 # * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
 # * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#*/
-
-#/*
-# * Changes from Qualcomm Innovation Center are provided under the following license:
+# *
+# * Changes from Qualcomm Innovation Center are provided under the following
+# * license:
 # * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
 # * SPDX-License-Identifier: BSD-3-Clause-Clear
 #*/
@@ -162,6 +161,8 @@
   gEfiKernelProtocolGuid =             { 0xB5062BE7, 0x170B, 0x4A32, { 0xBE, 0x21, 0x68, 0x92, 0x62, 0xFF, 0x43, 0x99 } }
   # HS-UART Protocol
   gQtiHSUartProtocolGuid =             { 0x8c102bba, 0x15a9, 0x4c40, { 0x85, 0x99, 0x6d, 0x0f, 0x56, 0x89, 0xda, 0x5b } }
+  # SoftSkuId protocol
+  gEfiSoftSkuProtocolGuid =            { 0xf917a796, 0x871b, 0x4595, { 0x85, 0x5c, 0x95, 0x38, 0x87, 0x75, 0x2e, 0xa3 } }
 
 [PcdsFixedAtBuild.common]
   # LinuxLoaderCommon
