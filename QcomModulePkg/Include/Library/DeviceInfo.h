@@ -31,7 +31,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 - 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 - 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -101,6 +101,10 @@ typedef struct {
 
 typedef struct device_info {
   CHAR8 magic[DEVICE_MAGIC_SIZE];
+#ifdef AUTO_VIRT_ABL
+  BOOLEAN IsResetDeviceState;
+  CHAR8 Type; // 0 = UNLOCK, 1 = UNLOCK_CRITICAL
+#endif
   BOOLEAN is_unlocked;
   BOOLEAN is_unlock_critical;
   BOOLEAN is_charger_screen_enabled;
