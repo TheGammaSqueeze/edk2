@@ -1205,9 +1205,11 @@ static UINT64* ReadKernelImagePfnIndexes (UINT64 *Offset,
         UINT64 DiskOffset;
         INT32 Loop = 0, Ret;
         DiskOffset = FIRST_PFN_INDEX_OFFSET;
-        UINT64 Soffset = DiskOffset;
-        VOID *PfnArrayStart;
 
+        VOID *PfnArrayStart;
+#if HIBERNATION_SUPPORT_AES
+        UINT64 Soffset = DiskOffset;
+#endif
         PfnArray = AllocatePages (NrMetaPages);
         if (!PfnArray) {
                 printf ("Memory alloc failed Line %d\n", __LINE__);
@@ -1225,12 +1227,14 @@ static UINT64* ReadKernelImagePfnIndexes (UINT64 *Offset,
         ArrayIndex = PfnArray;
         do {
                 if (IS_COMPRESS (SwsuspHeader->Flags)) {
+#if HIBERNATION_SUPPORT_AES
                         /*The MetaDecompress function performs decryption
                          * and decompression of meta pages.
                          */
                         Ret = MetaDecompress (&Soffset, ArrayIndex, PagesToRead,
                                 &Authtags, TempOut[0], AuthCur[0], 0,
                                 IvGlb, DecInfo, CmpBuf);
+#endif
                 } else {
                         Ret = ReadImage (DiskOffset, ArrayIndex, PagesToRead);
                 }
@@ -1290,6 +1294,7 @@ static INT32 ReadDataPages (VOID *Arg)
 
         PendingPages = Info->NumPages;
         if (IS_COMPRESS (SwsuspHeader->Flags)) {
+#if HIBERNATION_SUPPORT_AES
                 UINT64 Soffset = Info->Offset;
                 while (PendingPages > 0) {
                         /* read pages in chunks to improve disk read performance
@@ -1312,6 +1317,7 @@ static INT32 ReadDataPages (VOID *Arg)
                         }
                         PendingPages -= NrReadPages;
                 }
+#endif
         } else {
                 UINT64 SrcPfn, DstPfn;
                 while (PendingPages > 0) {
@@ -1763,17 +1769,19 @@ static INT32 ThreadConstructor (VOID *Arg, UINT64 *Offset, UINT64 *PfnOffset,
 
         RestoreInfo *Info = (RestoreInfo *) Arg;
         INT32 Iter2;
-        UINT64 Count = 0, NumCompPages;
+        UINT64 NumCompPages;
         Info->Offset = *Offset;
         Info->NumPages = NumPages;
         Info->KernelPfnIndexes = &KernelPfnIndexes[*PfnOffset];
         NumCompPages = NumPages;
         UINT64 DstPfn_z, NumDecomPage;
 #if HIBERNATION_SUPPORT_AES
+        UINT64 Count = 0;
         gBS->CopyMem (Info->Iv, IvGlb, sizeof (Dp->Iv));
         Info->Authtags = Authtags;
 #endif
         if (IS_COMPRESS (SwsuspHeader->Flags)) {
+#if HIBERNATION_SUPPORT_AES
                 INT32 NSlot = 0;
                 NumCompPages = 0;
                 while ((NumCompPages <= NumPages)
@@ -1809,6 +1817,7 @@ static INT32 ThreadConstructor (VOID *Arg, UINT64 *Offset, UINT64 *PfnOffset,
                       Info->DecInfo->TBytes = 0;
                 }
                 NumDecomPage = CMP_UNC_PAGES * NSlot;
+#endif
         } else {
                 NumDecomPage = NumPages;
         }
@@ -1820,8 +1829,10 @@ static INT32 ThreadConstructor (VOID *Arg, UINT64 *Offset, UINT64 *PfnOffset,
                         }
                 }
                 (*Offset)++;
+#if HIBERNATION_SUPPORT_AES
                 Authtags += Dp->Authsize;
                 Count++;
+#endif
         }
         for (Iter2 = 0; Iter2 < NumDecomPage; Iter2++) {
                 DstPfn_z = KernelPfnIndexes[*PfnOffset];
@@ -1830,7 +1841,9 @@ static INT32 ThreadConstructor (VOID *Arg, UINT64 *Offset, UINT64 *PfnOffset,
                 }
                 (*PfnOffset)++;
         }
+#if HIBERNATION_SUPPORT_AES
         IncrementIV (IvGlb, sizeof (Dp->Iv), Count);
+#endif
         return 0;
 }
 
@@ -1844,12 +1857,15 @@ static INT32 RestoreSnapshotImage (VOID)
         CHAR8 *ThreadName;
 
         UINT64 NumCompPages = 0;
+        UINT8 *BlkArr = NULL;
+        INT32 BlkLen = 0, DataIndx = 0, j = 0;
+#if HIBERNATION_SUPPORT_AES
         /* Parameters required for decompression */
-        INT32 DataIndx = 0, BlkLen = 0, j = 0, MetaIndx;
+        INT32 MetaIndx;
         UINT64 NumSilverPage = 0, NumGoldPage = 0;
-        UINT8 *BlkArr = NULL; INT32 ExtraDataPage = 0;
+        INT32 ExtraDataPage = 0;
         UINT32 SMPage = 0; UINT64 DstPfn_z;
-
+#endif
         InitReadMultiThreadEnv ();
         StartMs = GetTimerCountms ();
         Ret = ReadSwapInfoStruct ();
@@ -1866,6 +1882,7 @@ static INT32 RestoreSnapshotImage (VOID)
          * has been compressed using LZ4 algorithm.
          */
         if (IS_COMPRESS (SwsuspHeader->Flags)) {
+#if HIBERNATION_SUPPORT_AES
                 if (InitBlockArr (&BlkArr)) {
                     printf ("Block array initialization failed \n");
                     return -1;
@@ -1891,6 +1908,7 @@ static INT32 RestoreSnapshotImage (VOID)
                         printf ("Memory alloc failed Line %d\n", __LINE__);
                         return -1;
                 }
+#endif
         } else {
                 CmpBuf.Buf = NULL;
                 NumCompPages = ENTRIES_PER_SWAPMAP_PAGE - 1;
@@ -1909,8 +1927,8 @@ static INT32 RestoreSnapshotImage (VOID)
                 return -1;
         }
 
-#if HIBERNATION_SUPPORT_AES
         if (IS_COMPRESS (SwsuspHeader->Flags)) {
+#if HIBERNATION_SUPPORT_AES
                 /* Incrementing the offset value in accordance with
                  * the compressed meta pages and the Swap Map page */
                 Offset = FIRST_PFN_INDEX_OFFSET + NumCompPages + SMPage;
@@ -1941,13 +1959,16 @@ static INT32 RestoreSnapshotImage (VOID)
                 NumGoldPage = (NumCompPages * 0.6)
                                         /
                               (NUM_CORES - NUM_SILVER_CORES);
+#endif
         }
         for (Iter1 = 0; Iter1 < NUM_SILVER_CORES; Iter1++) {
                 if (IS_COMPRESS (SwsuspHeader->Flags)) {
+#if HIBERNATION_SUPPORT_AES
                         Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
                                                   &PfnOffset, &DataIndx, BlkLen,
                                                   BlkArr, NumSilverPage
                                                 );
+#endif
                 } else {
                         Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
                                                   &PfnOffset, &DataIndx, BlkLen,
@@ -1962,10 +1983,12 @@ static INT32 RestoreSnapshotImage (VOID)
 
         for (Iter1 = NUM_SILVER_CORES; Iter1 < NUM_CORES - 1; Iter1++) {
                 if (IS_COMPRESS (SwsuspHeader->Flags)) {
+#if HIBERNATION_SUPPORT_AES
                         Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
                                                   &PfnOffset, &DataIndx, BlkLen,
                                                   BlkArr, NumGoldPage
                                                 );
+#endif
                 } else {
                         Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
                                                   &PfnOffset, &DataIndx, BlkLen,
@@ -1977,7 +2000,6 @@ static INT32 RestoreSnapshotImage (VOID)
                     return Ret;
                 }
         }
-#endif
 
         /* Assign the remaining page to the last thread */
         if (IS_COMPRESS (SwsuspHeader->Flags)) {
@@ -1987,10 +2009,12 @@ static INT32 RestoreSnapshotImage (VOID)
                 }
         }
         if (IS_COMPRESS (SwsuspHeader->Flags)) {
+#if HIBERNATION_SUPPORT_AES
                 Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
                                 &PfnOffset, &DataIndx, BlkLen, BlkArr,
                                 NumCompPages
                                 );
+#endif
         } else {
                 Ret = ThreadConstructor ((VOID *)&Info[Iter1], &Offset,
                                 &PfnOffset, &DataIndx, BlkLen, BlkArr,
@@ -2090,6 +2114,7 @@ static INT32 RestoreSnapshotImage (VOID)
                  * 0, if any data pages are decompressed during the
                  * decompression of the final meta page unit.
                  */
+#if HIBERNATION_SUPPORT_AES
                 if ((CmpBuf.WPos - CmpBuf.RPos) / PAGE_SIZE) {
                         UINT64 SrcPfn1, DstPfn1;
                         INT32 Loop = 0, Ind = 0;
@@ -2108,6 +2133,7 @@ static INT32 RestoreSnapshotImage (VOID)
                         }
                         CmpBuf.RPos = 0, CmpBuf.WPos = 0;
                 }
+#endif
         }
         BootStatsSetTimeStamp (BS_KERNEL_LOAD_BOOT_END);
 
