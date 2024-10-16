@@ -323,4 +323,5 @@ BOOLEAN IsTargetAuto (VOID);
 BOOLEAN IsHibernationEnabled (VOID);
 BOOLEAN IsLVBootslotEnabled (VOID);
 BOOLEAN BootCpuSelectionEnabled (VOID);
+BOOLEAN IsDDRSupportsSCTConfig (VOID);
 #endif
