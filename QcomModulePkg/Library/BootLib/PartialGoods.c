@@ -698,6 +698,12 @@ static struct PartialGoodsWithLabel PartialGoodsMmTypeWithLabel[] = {
     {"mdss_dsi_phy3", "status", "no"}},
     {BIT (EFICHIPINFO_PART_DISPLAY_1),
     {"dispcc1", "status", "no"}},
+    {BIT (EFICHIPINFO_PART_EVA),
+    {"eva_cc_mvs0_gdsc", "status", "no"}},
+    {BIT (EFICHIPINFO_PART_EVA),
+    {"eva_cc_mvs0c_gdsc", "status", "no"}},
+    {BIT (EFICHIPINFO_PART_EVA),
+    {"evacc", "status", "no"}},
 };
 
 STATIC EFI_STATUS
