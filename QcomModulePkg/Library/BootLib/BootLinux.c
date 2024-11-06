@@ -2550,3 +2550,15 @@ BOOLEAN IsHibernationEnabled (VOID)
   return FALSE;
 }
 #endif
+
+#ifdef DDR_SUPPORTS_SCT_CONFIG
+BOOLEAN IsDDRSupportsSCTConfig (VOID)
+{
+  return TRUE;
+}
+#else
+BOOLEAN IsDDRSupportsSCTConfig (VOID)
+{
+  return FALSE;
+}
+#endif
