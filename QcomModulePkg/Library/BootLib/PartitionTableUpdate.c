@@ -30,7 +30,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -65,6 +65,9 @@
 
 #include "PartitionTableUpdate.h"
 #include "AutoGen.h"
+#ifdef AUTO_VIRT_ABL
+#include <Library/Recovery.h>
+#endif
 #include <Library/Board.h>
 #include <Library/BootLinux.h>
 #include <Library/LinuxLoaderLib.h>
@@ -1321,7 +1324,15 @@ GetBootPartitionEntry (Slot *BootSlot)
 BOOLEAN IsCurrentSlotBootable (VOID)
 {
   Slot CurrentSlot = {{0}};
+#ifdef AUTO_VIRT_ABL
+  BOOLEAN Ret = FALSE;
+  struct RecoveryMessage *Msg = NULL;
+  EFI_GUID Ptype = gEfiMiscPartitionGuid;
+  VOID *PartitionData = NULL;
+  UINT32 PageSize;
+#else
   struct PartitionEntry *BootPartition = NULL;
+#endif
   EFI_STATUS Status = GetActiveSlot (&CurrentSlot);
 
   if (Status != EFI_SUCCESS) {
@@ -1329,6 +1340,35 @@ BOOLEAN IsCurrentSlotBootable (VOID)
     return FALSE;
   }
 
+#ifdef AUTO_VIRT_ABL
+  GetPageSize (&PageSize);
+  Status = ReadFromPartition (&Ptype, (VOID **)&PartitionData, (PageSize * 4));
+  if (Status != EFI_SUCCESS) {
+    DEBUG ((EFI_D_ERROR, "Error Reading from misc partition: %r\n", Status));
+    return FALSE;
+  }
+
+  if (!PartitionData) {
+    DEBUG ((EFI_D_ERROR, "Error in loading Data from misc partition\n"));
+    return FALSE;
+  }
+
+  Msg = (struct RecoveryMessage *) PartitionData;
+  if (Msg->Reserved[3] == 'y') {
+    Ret = TRUE;
+  } else if (Msg->Reserved[5] == 'y') {
+    Ret = TRUE;
+  }
+
+  FreePool (PartitionData);
+  PartitionData = NULL;
+  Msg = NULL;
+
+  if (Ret) {
+    DEBUG ((EFI_D_VERBOSE, "Slot %s is bootable\n", CurrentSlot.Suffix));
+    return TRUE;
+  }
+#else
   BootPartition = GetBootPartitionEntry (&CurrentSlot);
   if (BootPartition == NULL) {
     DEBUG ((EFI_D_ERROR, "IsCurrentSlotBootable: No boot partition "
@@ -1344,6 +1384,7 @@ BOOLEAN IsCurrentSlotBootable (VOID)
     DEBUG ((EFI_D_VERBOSE, "Slot %s is bootable\n", CurrentSlot.Suffix));
     return TRUE;
   }
+#endif
 
   DEBUG ((EFI_D_VERBOSE, "Slot %s is unbootable \n", CurrentSlot.Suffix));
   return FALSE;
