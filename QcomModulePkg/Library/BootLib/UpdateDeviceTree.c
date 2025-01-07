@@ -1148,7 +1148,7 @@ GetDDrRegionsInfo (struct ddr_regions_data_info *DdrRegionsInfo)
   Revision = pDDrGetInfoProtocol->Revision;
   DEBUG ((EFI_D_VERBOSE, "DDR Header Revision =0x%x\n", Revision));
 
-  if (Revision < EFI_DDRGETINFO_PROTOCOL_REVISION) {
+  if (Revision < EFI_DDRGETINFO_PROTOCOL_REVISION_5) {
     DEBUG ((EFI_D_VERBOSE,
             "GetDDRMappedRegions not supported in Revision=0x%x\n", Revision));
     return EFI_UNSUPPORTED;

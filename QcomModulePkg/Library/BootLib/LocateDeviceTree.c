@@ -1010,8 +1010,7 @@ ReadDtbFindMatch (DtInfo *CurDtbInfo, DtInfo *BestDtbInfo, UINT32 ExactMatch)
     if (OemVarProp &&
         (LenOemId > 0)) {
       CurDtbInfo->DtOEMVariantId =
-        ((((struct oem_id *)OemVarProp)->oem_variant_id) & OEM_ID_MASK)
-         >> OEM_ID_SHIFT;
+              REVERSE_32_BITS (((struct oem_id *)OemVarProp)->oem_variant_id);
       if (CurDtbInfo->DtOEMVariantId == BoardOEMVariantId ()) {
         CurDtbInfo->DtMatchVal |= BIT (OEM_FLAVOR_EXACT_MATCH);
       }

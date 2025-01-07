@@ -116,6 +116,12 @@
 #define OEM_ID_SHIFT 24
 #define DDR_MASK (0x00000700)
 #define BOOT_DEVICE_MASK (0x000f0000)
+#define OEMID_MASK1 24
+#define OEMID_MASK2 8
+#define REVERSE_32_BITS(num) ( ((num & 0xFF000000) >> OEMID_MASK1) \
+                   | ((num & 0x00FF0000) >> OEMID_MASK2) \
+                   | ((num & 0x0000FF00) << OEMID_MASK2) \
+                   | ((num & 0x000000FF) << OEMID_MASK1) )
 
 typedef enum {
   NONE_MATCH,

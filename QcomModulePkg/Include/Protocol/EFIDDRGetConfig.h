@@ -40,6 +40,7 @@ typedef struct _EFI_DDRGETINFO_PROTOCOL EFI_DDRGETINFO_PROTOCOL;
 /**
   Protocol version.
 */
+#define EFI_DDRGETINFO_PROTOCOL_REVISION_5 0x0000000000050000
 #define EFI_DDRGETINFO_PROTOCOL_REVISION 0x0000000000070000
 
 /*Both the protocl version and the structure version should be same */
