@@ -52,7 +52,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -128,6 +128,38 @@ STATIC UINT32 GetNodeNameLen (CONST CHAR8 *NodeName)
   return NameLen;
 }
 
+STATIC UINT32 GetActualNodeNameLen (CONST CHAR8 *NodeName)
+{
+  CONST CHAR8 *Ptr = NULL;
+  CONST CHAR8 *End = NodeName + AsciiStrLen (NodeName);
+  UINT32 NameLen = 0;
+
+  if (! *NodeName) {
+    return NameLen;
+  }
+  /* Example node: "soc: soc@0 {}"; NameLen: the length of soc */
+  Ptr = strchr (NodeName, ':');
+  if (Ptr) {
+    goto End;
+  }
+  /* Example node: "memory@80000000 {}"; NameLen: the length of memory */
+  Ptr = strchr (NodeName, '@');
+   if (Ptr) {
+    goto End;
+  }
+  /* Example node: "reserved-memory {}"
+   * NameLen: the length of reserved-memory
+   */
+  Ptr = strchr (NodeName, '{');
+   if (! Ptr) {
+    Ptr = End;
+  }
+
+End:
+  NameLen = Ptr - NodeName;
+  return NameLen;
+}
+
 STATIC BOOLEAN IsNodeAdded (CONST CHAR8 *NodeName, UINT32 NameLen)
 {
   FDT_FIRST_LEVEL_NODE *Node = NULL;
@@ -197,7 +229,13 @@ STATIC BOOLEAN FdtFindNodeFromList (CONST CHAR8 *Name,
     *NodeOffset = NodeList->NodeOffset;
 
     for (Node = NodeList; Node; Node = Node->Next) {
-      if (!AsciiStrnCmp (Node->NodeName, Name, NameLen)) {
+      /* When searching for nodes in the device tree, it looks for keywords.
+       * This is a fuzzy match, so if there are two similar names, such as 'soc'
+       * and 'soc1',  the search might return the offset for 'soc' to 'soc1'.
+       * To avoid this error, add a check for the node length.
+       */
+      if (!AsciiStrnCmp (Node->NodeName, Name, NameLen) &&
+          (GetActualNodeNameLen (Node->NodeName) == NameLen)) {
         *NodeOffset = Node->NodeOffset;
         return TRUE;
       }
