@@ -159,6 +159,9 @@
   !if $(ENABLE_LE_VARIANT) == 1
       GCC:*_*_*_CC_FLAGS = -DENABLE_LE_VARIANT
   !endif
+  !if $(WEAR_OS)
+      GCC:*_*_*_CC_FLAGS = -DWEAR_OS
+  !endif
   !if $(ENABLE_LV_ATOMIC_AB) == 1
       GCC:*_*_*_CC_FLAGS = -DENABLE_LV_ATOMIC_AB
   !endif
