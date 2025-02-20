@@ -29,7 +29,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -77,9 +77,13 @@
 
 /* Recovery Message */
 struct RecoveryMessage {
-  CHAR8 command[32];
-  CHAR8 status[32];
-  CHAR8 recovery[1024];
+  CHAR8 Command[32];
+  CHAR8 Status[32];
+  CHAR8 Recovery[768];
+#ifdef AUTO_VIRT_ABL
+  CHAR8 Stage[32];
+  CHAR8 Reserved[1184]; // AB slot metadata
+#endif
 };
 
 #define MISC_VIRTUAL_AB_MESSAGE_VERSION 2
@@ -131,4 +135,6 @@ EFI_STATUS
 SetSnapshotMergeStatus (VirtualAbMergeStatus MergeStatus);
 EFI_STATUS
 DetectFDR (BOOLEAN *FDRDetected);
+EFI_STATUS
+ReadFromPartition (EFI_GUID *Ptype, VOID **Msg, UINT32 Size);
 #endif

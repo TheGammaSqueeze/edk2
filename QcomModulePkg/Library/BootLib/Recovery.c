@@ -29,7 +29,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -272,7 +272,7 @@ GetSnapshotMergeStatus (VOID)
   return MergeStatus;
 }
 
-STATIC EFI_STATUS
+EFI_STATUS
 ReadFromPartition (EFI_GUID *Ptype, VOID **Msg, UINT32 Size)
 {
   return (ReadFromPartitionOffset (Ptype, Msg, Size, 0));
@@ -319,7 +319,7 @@ WriteRecoveryMessage (CHAR8 *Command)
            (struct RecoveryMessage *) ((CHAR8 *) PartitionData + PageSize) :
            (struct RecoveryMessage *) PartitionData;
 
-  Status = AsciiStrnCpyS (Msg->command, sizeof (Msg->command),
+  Status = AsciiStrnCpyS (Msg->Command, sizeof (Msg->Command),
                                   Command, AsciiStrLen (Command));
   if (Status == EFI_SUCCESS) {
     Status =
@@ -371,19 +371,20 @@ RecoveryInit (BOOLEAN *BootIntoRecovery)
            (struct RecoveryMessage *) PartitionData;
 
   // Ensure NULL termination
-  Msg->command[sizeof (Msg->command) - 1] = '\0';
-  if (Msg->command[0] != 0 && Msg->command[0] != 255)
-    DEBUG ((EFI_D_VERBOSE, "Recovery command: %d %a\n", sizeof (Msg->command),
-            Msg->command));
+  Msg->Command[sizeof (Msg->Command) - 1] = '\0';
+  if (Msg->Command[0] != 0 &&
+      Msg->Command[0] != 255)
+    DEBUG ((EFI_D_VERBOSE, "Recovery command: %d %a\n", sizeof (Msg->Command),
+            Msg->Command));
 
-  if (!AsciiStrnCmp (Msg->command, RECOVERY_BOOT_RECOVERY,
+  if (!AsciiStrnCmp (Msg->Command, RECOVERY_BOOT_RECOVERY,
                        AsciiStrLen (RECOVERY_BOOT_RECOVERY))) {
     *BootIntoRecovery = TRUE;
   }
 
   /* Boot recovery partition to start userspace fastboot */
   if ( IsDynamicPartitionSupport () &&
-       !AsciiStrnCmp (Msg->command, RECOVERY_BOOT_FASTBOOT,
+       !AsciiStrnCmp (Msg->Command, RECOVERY_BOOT_FASTBOOT,
                           AsciiStrLen (RECOVERY_BOOT_FASTBOOT))) {
     *BootIntoRecovery = TRUE;
   }
@@ -484,23 +485,23 @@ DetectFDR (BOOLEAN *FDRDetected)
            (struct RecoveryMessage *) PartitionData;
 
   // Ensure NULL termination
-  Msg->command[sizeof (Msg->command) - 1] = '\0';
-  Msg->recovery[sizeof (Msg->recovery) - 1] = '\0';
+  Msg->Command[sizeof (Msg->Command) - 1] = '\0';
+  Msg->Recovery[sizeof (Msg->Recovery) - 1] = '\0';
   /* Compare the strings only when they are not NULL
    * And is not blank.
    */
-  if (Msg->command[0] != 0 &&
-      Msg->command[0] != 255 &&
-      Msg->recovery[0] != 0 &&
-      Msg->recovery[0] != 255) {
-    DEBUG ((EFI_D_VERBOSE, "Recovery command: %d %a\n", sizeof (Msg->command),
-            Msg->command));
-    DEBUG ((EFI_D_VERBOSE, "Recovery recovery: %d %a\n", sizeof (Msg->recovery),
-            Msg->recovery));
+  if (Msg->Command[0] != 0 &&
+      Msg->Command[0] != 255 &&
+      Msg->Recovery[0] != 0 &&
+      Msg->Recovery[0] != 255) {
+    DEBUG ((EFI_D_VERBOSE, "Recovery command: %d %a\n", sizeof (Msg->Command),
+            Msg->Command));
+    DEBUG ((EFI_D_VERBOSE, "Recovery recovery: %d %a\n", sizeof (Msg->Recovery),
+            Msg->Recovery));
 
-    if ((!AsciiStrnCmp (Msg->command, RECOVERY_BOOT_RECOVERY,
+    if ((!AsciiStrnCmp (Msg->Command, RECOVERY_BOOT_RECOVERY,
                          AsciiStrLen (RECOVERY_BOOT_RECOVERY))) &&
-        (!AsciiStrnCmp (Msg->recovery, RECOVERY_FACTORY_DATA_RESET,
+        (!AsciiStrnCmp (Msg->Recovery, RECOVERY_FACTORY_DATA_RESET,
                          AsciiStrLen (RECOVERY_FACTORY_DATA_RESET)))) {
 
       /* If Recovery msg's command field has "boot-recovery" and
