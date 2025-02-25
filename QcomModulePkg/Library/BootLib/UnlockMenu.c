@@ -29,7 +29,7 @@
 /*
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted (subject to the limitations in the
@@ -88,6 +88,135 @@ STATIC UNLOCK_INFO mUnlockInfo[] = {
         [DISPLAY_MENU_UNLOCK_CRITICAL] = {UNLOCK_CRITICAL, TRUE},
 };
 
+#ifdef WEAR_OS
+STATIC MENU_MSG_INFO mUnlockMenuMsgInfo[] = {
+    {{"<!>"}, BIG_FACTOR, BGR_RED, BGR_BLACK, COMMON, 0, NOACTION},
+    {{"\nBy unlocking the bootloader, you will be able to install "
+      "custom operating system on this phone. "},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     COMMON,
+     0,
+     NOACTION},
+    {{"To prevent unauthorized access to your personal data, "
+      "unlocking the bootloader will also delete all personal "
+      "data on your phone."},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     COMMON,
+     0,
+     NOACTION},
+    {{"\nPress the Volume keys to select whether to unlock the bootloader, "
+      "then the Power Button to continue."},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     COMMON,
+     0,
+     NOACTION},
+    {{"__________"},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     LINEATION,
+     0,
+     NOACTION},
+    {{"DO NOT UNLOCK THE BOOTLOADER"},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     OPTION_ITEM,
+     0,
+     RESTART},
+    {{"__________"},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     LINEATION,
+     0,
+     NOACTION},
+    {{"UNLOCK THE BOOTLOADER"},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     OPTION_ITEM,
+     0,
+     RECOVER},
+    {{"__________"},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     LINEATION,
+     0,
+     NOACTION},
+};
+STATIC MENU_MSG_INFO mLockMenuMsgInfo[] = {
+    {{"<!>"}, BIG_FACTOR, BGR_RED, BGR_BLACK, COMMON, 0, NOACTION},
+    {{"If you lock the bootloader, you will not be able to install "
+      "custom operating system on this phone.\n"},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     COMMON,
+     0,
+     NOACTION},
+    {{"To prevent unauthorized access to your personal data,"
+      "locking the bootloader will also delete all personal "
+      "data on your phone."},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     COMMON,
+     0,
+     NOACTION},
+    {{"\nPress the Volume keys to select whether to "
+      "unlock the bootloader, then the power button to continue."},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     COMMON,
+     0,
+     NOACTION},
+    {{"__________"},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     LINEATION,
+     0,
+     NOACTION},
+    {{"DO NOT LOCK THE BOOTLOADER"},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     OPTION_ITEM,
+     0,
+     RESTART},
+    {{"__________"},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     LINEATION,
+     0,
+     NOACTION},
+    {{"LOCK THE BOOTLOADER"},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     OPTION_ITEM,
+     0,
+     RECOVER},
+    {{"__________"},
+     COMMON_FACTOR,
+     BGR_WHITE,
+     BGR_BLACK,
+     LINEATION,
+     0,
+     NOACTION},
+};
+
+#else
 STATIC MENU_MSG_INFO mUnlockMenuMsgInfo[] = {
     {{"<!>"}, BIG_FACTOR, BGR_RED, BGR_BLACK, COMMON, 0, NOACTION},
     {{"\n\nBy unlocking the bootloader, you will be able to install "
@@ -227,7 +356,7 @@ STATIC MENU_MSG_INFO mLockMenuMsgInfo[] = {
      0,
      NOACTION},
 };
-
+#endif
 /**
   Reset device unlock status
   @param[in] Type    The type of the unlock.
