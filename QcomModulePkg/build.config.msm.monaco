@@ -9,6 +9,7 @@ DISABLE_PARALLEL_DOWNLOAD_FLASH=0
 VERIFIED_BOOT_ENABLED=1
 HIBERNATION_SUPPORT_NO_AES=1
 HIBERNATION_PARTITION_NAME="swap"
+WEAR_OS=1
 
 ################################################################################
 . ${ROOT_DIR}/${ABL_SRC}/QcomModulePkg/build.config.msm.common

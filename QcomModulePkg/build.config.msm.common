@@ -49,6 +49,9 @@ fi
 if [ -n "${VERITY_LE}" ]; then
   MAKE_FLAGS+=("VERITY_LE=${VERITY_LE}")
 fi
+if [ -n "${WEAR_OS}" ]; then
+  MAKE_FLAGS+=("WEAR_OS=${WEAR_OS}")
+fi
 if [ -n "${USER_BUILD_VARIANT}" ]; then
   MAKE_FLAGS+=("USER_BUILD_VARIANT=${USER_BUILD_VARIANT}")
 fi
